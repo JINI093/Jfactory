@@ -1,0 +1,24 @@
+class RouteNames {
+  static const String splash = '/';
+  static const String login = '/login';
+  static const String signup = '/signup';
+  static const String main = '/main';
+  static const String companyDetail = '/company/:id';
+  static const String categoryDetail = '/category/:categoryTitle';
+  static const String premiumPostDetail = '/post/:postId';
+  static const String companyPage = '/company-page/:companyId';
+  static const String companyList = '/companies';
+  static const String search = '/search';
+  static const String favorites = '/favorites';
+  static const String profile = '/profile';
+  static const String settings = '/settings';
+  static const String terms = '/terms';
+  static const String phoneVerification = '/phone-verification';
+  static const String companyRegister = '/company-register';
+  static const String companyEdit = '/company-edit';
+  static const String postWrite = '/post-write';
+  static const String payment = '/payment';
+  static const String inquiry = '/inquiry';
+  static const String advertisementRegistration = '/advertisement-registration';
+  RouteNames._();
+}

@@ -1,0 +1,424 @@
+# .cursorrules for Flutter 업체소개 광고 앱
+
+## 프로젝트 개요
+이 프로젝트는 기업들이 광고비를 지불하고 자사를 홍보할 수 있는 Flutter 모바일 앱입니다.
+- **백엔드**: Firebase (Auth, Firestore, Storage, Messaging)
+- **상태관리**: Provider 패턴
+- **디자인**: 기존 Figma 디자인 준수
+- **타겟**: iOS/Android + 관리자 웹(Flutter Web)
+
+## 핵심 브랜딩 및 디자인
+- **Primary Color**: #3B456C
+- **Secondary Color**: #E6E9F2  
+- **Black**: #000000
+- **Gray Scale**: Gray 50~800
+- 모든 UI는 Figma 디자인 시스템을 준수해야 함
+
+## 아키텍처 패턴
+- **UI 패턴**: MVVM (Model-View-ViewModel)
+- **라우팅**: Go Router
+- **상태관리**: Riverpod
+
+## 코딩 스타일 및 컨벤션
+
+### 1. 파일 구조 (MVVM + Clean Architecture)
+```
+lib/
+├── core/
+│   ├── constants/
+│   │   ├── app_colors.dart
+│   │   ├── app_strings.dart
+│   │   └── app_sizes.dart
+│   ├── theme/
+│   │   ├── app_theme.dart
+│   │   └── app_text_styles.dart
+│   ├── utils/
+│   │   ├── validators.dart
+│   │   ├── helpers.dart
+│   │   └── extensions.dart
+│   ├── errors/
+│   │   ├── exceptions.dart
+│   │   └── failures.dart
+│   └── router/
+│       ├── app_router.dart
+│       └── route_names.dart
+├── data/
+│   ├── models/
+│   │   ├── user_model.dart
+│   │   ├── company_model.dart
+│   │   └── payment_model.dart
+│   ├── repositories/
+│   │   ├── auth_repository_impl.dart
+│   │   ├── company_repository_impl.dart
+│   │   └── payment_repository_impl.dart
+│   └── datasources/
+│       ├── firebase_auth_datasource.dart
+│       ├── firestore_datasource.dart
+│       └── storage_datasource.dart
+├── domain/
+│   ├── entities/
+│   │   ├── user_entity.dart
+│   │   ├── company_entity.dart
+│   │   └── payment_entity.dart
+│   ├── repositories/
+│   │   ├── auth_repository.dart
+│   │   ├── company_repository.dart
+│   │   └── payment_repository.dart
+│   └── usecases/
+│       ├── auth/
+│       ├── company/
+│       └── payment/
+├── presentation/
+│   ├── views/
+│   │   ├── splash/
+│   │   │   ├── splash_view.dart
+│   │   │   └── widgets/
+│   │   ├── auth/
+│   │   │   ├── login_view.dart
+│   │   │   ├── signup_view.dart
+│   │   │   └── widgets/
+│   │   ├── main/
+│   │   │   ├── main_view.dart
+│   │   │   └── widgets/
+│   │   ├── company/
+│   │   │   ├── company_detail_view.dart
+│   │   │   ├── company_list_view.dart
+│   │   │   └── widgets/
+│   │   └── shared/
+│   │       └── widgets/
+│   ├── viewmodels/
+│   │   ├── auth_viewmodel.dart
+│   │   ├── company_viewmodel.dart
+│   │   ├── main_viewmodel.dart
+│   │   └── splash_viewmodel.dart
+│   └── providers/
+│       ├── auth_providers.dart
+│       ├── company_providers.dart
+│       └── app_providers.dart
+└── main.dart
+```
+
+### 2. MVVM 패턴 규칙
+- **View**: UI 로직만 담당, 비즈니스 로직 금지
+- **ViewModel**: View와 Model 사이의 중간 계층, 상태 관리
+- **Model**: 데이터 구조 및 비즈니스 로직
+- ViewModel은 View에 대한 참조를 가지지 않음
+- View는 ViewModel을 구독하여 상태 변화 감지
+
+### 3. Go Router 라우팅 규칙
+- 모든 라우팅은 GoRouter를 통해 관리
+- 라우트 이름은 상수로 정의 (route_names.dart)
+- 중첩 라우팅 활용으로 복잡한 네비게이션 구조 구현
+- 라우팅 가드를 통한 인증 상태 체크
+
+### 4. Riverpod 상태관리 규칙
+- Provider, StateProvider, StateNotifierProvider 적절히 활용
+- 전역 상태는 최소화하고 필요한 곳에서만 사용
+- 비동기 데이터는 FutureProvider 또는 AsyncNotifierProvider 사용
+- 상태 변화 시 필요한 위젯만 rebuild되도록 최적화
+- **파일명**: snake_case (예: company_detail_page.dart)
+- **클래스명**: PascalCase (예: CompanyDetailPage)
+- **변수/함수명**: camelCase (예: companyList, fetchCompanies)
+- **상수명**: SCREAMING_SNAKE_CASE (예: PRIMARY_COLOR)
+- **Private 멤버**: 언더스코어 접두사 (예: _isLoading)
+
+### 5. 네이밍 컨벤션
+- StatelessWidget을 우선 사용, 상태가 필요한 경우만 StatefulWidget
+- Consumer 또는 Selector를 사용한 효율적인 상태 관리
+- 재사용 가능한 커스텀 위젯은 widgets/ 폴더에 분리
+
+### 6. MVVM 구조 및 위젯 규칙
+- View는 StatelessWidget 또는 ConsumerWidget 사용
+- ViewModel은 StateNotifier 또는 AsyncNotifier 상속
+- View에서 ViewModel 접근은 ref.watch() 또는 ref.read() 사용
+- 비즈니스 로직은 ViewModel 또는 UseCase에서 처리
+- UI 상태와 비즈니스 상태 분리
+
+### 7. 코드 작성 규칙
+- 모든 public 메서드와 클래스에 문서 주석 추가
+- 매직 넘버 대신 상수 사용
+- null safety 완전 준수
+- 에러 핸들링 필수 (try-catch, Result pattern)
+- 비동기 처리는 async/await 사용
+
+## Firebase 관련 규칙
+
+### 1. Firestore 컬렉션 구조
+```
+users/ - 사용자 정보
+companies/ - 기업 정보
+  /{companyId}/posts/ - 기업 게시글 (서브컬렉션)
+  /{companyId}/inquiries/ - 기업 문의 (서브컬렉션)
+categories/ - 업종 분류
+regions/ - 지역 정보
+payments/ - 결제 내역
+notifications/ - 알림 정보
+```
+
+### 2. 데이터 모델링
+- 모든 Firestore 문서는 timestamp 필드 포함 (createdAt, updatedAt)
+- ID는 Firestore 자동 생성 사용
+- 중복 데이터는 최소화하되, 읽기 성능을 위한 비정규화는 허용
+- 모든 모델 클래스는 fromJson/toJson 메서드 구현
+
+### 3. 보안 규칙
+- 사용자는 본인 데이터만 수정 가능
+- 기업 정보는 해당 기업 소유자만 수정 가능
+- 관리자만 모든 데이터 접근 가능
+
+## 상태 관리 (Riverpod)
+
+### 1. Provider 구조
+- **authProvider**: 사용자 인증 상태 (StateNotifierProvider)
+- **companyListProvider**: 기업 목록 데이터 (AsyncNotifierProvider)
+- **companyDetailProvider**: 기업 상세 정보 (FutureProvider)
+- **userProfileProvider**: 사용자 프로필 (StateNotifierProvider)
+- **paymentProvider**: 결제 상태 관리 (StateNotifierProvider)
+
+### 2. Riverpod 사용 규칙
+- UI와 비즈니스 로직 완전 분리
+- Provider는 Repository 패턴을 통해 데이터 접근
+- AsyncValue를 통한 loading, error, data 상태 관리
+- ref.invalidate()를 통한 적절한 캐시 무효화
+- family modifier로 매개변수가 있는 Provider 생성
+
+### 3. ViewModel 패턴
+```dart
+// 예시: AuthViewModel
+class AuthViewModel extends StateNotifier<AuthState> {
+  final AuthRepository _authRepository;
+  
+  AuthViewModel(this._authRepository) : super(AuthState.initial());
+  
+  Future<void> login(String email, String password) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      final user = await _authRepository.login(email, password);
+      state = state.copyWith(user: user, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+}
+```
+
+## 라우팅 (Go Router)
+
+### 1. 라우트 구조
+```dart
+// route_names.dart
+class RouteNames {
+  static const splash = '/';
+  static const main = '/main';
+  static const login = '/login';
+  static const signup = '/signup';
+  static const companyDetail = '/company/:id';
+  static const companyRegister = '/company/register';
+  static const payment = '/payment';
+}
+```
+
+### 2. Go Router 설정
+- 중첩 라우팅으로 복잡한 네비게이션 구조 구현
+- redirect를 통한 인증 가드 구현
+- 타입 안전한 라우팅을 위한 extension 활용
+
+## UI/UX 가이드라인
+
+### 1. 반응형 디자인
+- ScreenUtil 패키지 사용으로 다양한 화면 크기 대응
+- 기준 디자인 사이즈: 375x812 (iPhone X 기준)
+- 태블릿은 별도 레이아웃 고려
+
+### 2. 성능 최적화
+- ListView.builder 사용으로 메모리 효율성 확보
+- CachedNetworkImage로 이미지 로딩 최적화
+- 무한 스크롤 구현 시 페이지네이션 적용
+- 불필요한 rebuild 방지를 위한 const 생성자 사용
+
+### 3. 사용자 경험
+- 로딩 상태 시 적절한 인디케이터 표시
+- 에러 발생 시 사용자 친화적 메시지 표시
+- 네트워크 오류 시 재시도 기능 제공
+- 뒤로가기 버튼 일관된 동작
+
+## 패키지 사용 가이드
+
+### 필수 패키지
+```yaml
+# Firebase
+firebase_core: ^2.24.2
+firebase_auth: ^4.15.3
+firebase_firestore: ^4.13.6
+firebase_storage: ^11.5.6
+firebase_messaging: ^14.7.10
+
+# 상태관리
+flutter_riverpod: ^2.4.9
+riverpod_annotation: ^2.3.3
+
+# 라우팅
+go_router: ^12.1.3
+
+# UI/UX
+flutter_screenutil: ^5.9.0
+cached_network_image: ^3.3.0
+image_picker: ^1.0.4
+
+# 소셜 로그인
+google_sign_in: ^6.1.6
+sign_in_with_apple: ^5.0.0
+kakao_flutter_sdk: ^1.7.0
+flutter_naver_login: ^1.8.0
+
+# 지도
+naver_map_plugin: ^0.9.7
+
+# 결제
+in_app_purchase: ^3.1.11
+
+# 유틸리티
+url_launcher: ^6.2.2
+permission_handler: ^11.0.1
+
+# 코드 생성 (dev_dependencies)
+riverpod_generator: ^2.3.9
+build_runner: ^2.4.7
+json_annotation: ^4.8.1
+json_serializable: ^6.7.1
+```
+
+### 패키지 사용 규칙
+- 새로운 패키지 추가 시 라이센스 확인
+- 패키지 버전은 최신 안정 버전 사용
+- 사용하지 않는 패키지는 즉시 제거
+
+## 테스트 가이드라인
+
+### 1. 테스트 작성 규칙
+- 모든 ViewModel과 Repository에 대한 단위 테스트 작성
+- Provider 테스트는 ProviderContainer 사용
+- 중요한 View에 대한 위젯 테스트 작성
+- Go Router 라우팅 테스트 포함
+
+### 2. 테스트 파일 구조
+```
+test/
+├── unit/
+│   ├── viewmodels/
+│   ├── repositories/
+│   ├── usecases/
+│   └── models/
+├── widget/
+│   ├── views/
+│   └── widgets/
+├── integration/
+└── helpers/
+    └── test_helpers.dart
+```
+
+### 3. Riverpod 테스트 예시
+```dart
+void main() {
+  testWidgets('AuthViewModel login test', (tester) async {
+    final container = ProviderContainer(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(mockAuthRepository),
+      ],
+    );
+    
+    final viewModel = container.read(authViewModelProvider.notifier);
+    await viewModel.login('test@test.com', 'password');
+    
+    expect(container.read(authViewModelProvider).user, isNotNull);
+  });
+}
+```
+
+## 보안 및 성능
+
+### 1. 보안 규칙
+- API 키는 환경 변수로 관리
+- 민감한 정보는 암호화하여 저장
+- 사용자 입력값 검증 필수
+- Firebase Security Rules 엄격하게 적용
+
+### 2. 성능 최적화
+- 이미지는 적절한 해상도로 압축
+- 불필요한 네트워크 요청 최소화
+- 캐싱 전략 적극 활용
+- 메모리 누수 방지
+
+## Git 및 협업
+
+### 1. 커밋 메시지 컨벤션
+```
+feat: 새로운 기능 추가
+fix: 버그 수정
+docs: 문서 수정
+style: 코드 스타일 변경
+refactor: 코드 리팩토링
+test: 테스트 코드
+chore: 기타 작업
+```
+
+### 2. 브랜치 전략
+- **main**: 배포 가능한 코드
+- **develop**: 개발 통합 브랜치
+- **feature/기능명**: 기능 개발 브랜치
+- **hotfix/버그명**: 긴급 버그 수정
+
+### 3. 코드 리뷰
+- PR 생성 시 상세한 설명 작성
+- 테스트 코드 포함 여부 확인
+- 성능 영향도 검토
+- UI/UX 가이드라인 준수 확인
+
+## 배포 및 운영
+
+### 1. 배포 환경
+- **Development**: Firebase 개발 프로젝트
+- **Staging**: Firebase 스테이징 프로젝트  
+- **Production**: Firebase 프로덕션 프로젝트
+
+### 2. 모니터링
+- Firebase Crashlytics로 앱 크래시 모니터링
+- Firebase Analytics로 사용자 행동 분석
+- Performance Monitoring으로 성능 추적
+
+## 추가 고려사항
+
+### 1. MVVM 패턴 베스트 프랙티스
+- View는 UI 로직만, ViewModel은 비즈니스 로직만
+- ViewModel에서 BuildContext 사용 금지
+- 복잡한 상태는 sealed class로 모델링
+- 상태 변화 시 불변 객체 사용 (copyWith 패턴)
+
+### 2. Riverpod 최적화
+- Provider는 가능한 한 세분화하여 불필요한 rebuild 방지
+- watch vs read vs listen 적절한 선택
+- AutoDispose 활용으로 메모리 누수 방지
+- ref.invalidate() 대신 ref.refresh() 적절히 활용
+
+### 3. Go Router 활용
+- 타입 안전한 라우팅을 위한 GoRouterHelper 확장
+- 딥링크 지원을 위한 적절한 라우트 설계
+- 라우트 전환 애니메이션 커스터마이징
+- 백 버튼 처리 및 라우트 히스토리 관리
+
+### 4. 접근성
+- 스크린 리더 지원을 위한 Semantics 적용
+- 적절한 색상 대비 유지
+- 터치 영역 최소 44x44pt 확보
+
+### 2. 국제화 (추후)
+- intl 패키지 사용 준비
+- 다국어 지원을 위한 ARB 파일 구조
+
+### 3. 에러 처리
+- 네트워크 오류 처리
+- 권한 거부 처리
+- 파일 업로드 실패 처리
+- 결제 실패 처리
+
+이 규칙들을 따라 일관되고 품질 높은 코드를 작성해주세요.
