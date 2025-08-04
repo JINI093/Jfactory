@@ -115,18 +115,18 @@ class FirebaseAuthDataSourceImpl implements FirebaseAuthDataSource {
       // Check if KakaoTalk is installed and available
       bool isKakaoTalkInstalled = await kakao.isKakaoTalkInstalled();
       
-      kakao.OAuthToken token;
+      // Authenticate with Kakao
       if (isKakaoTalkInstalled) {
         try {
           // Login with KakaoTalk app
-          token = await kakao.UserApi.instance.loginWithKakaoTalk();
+          await kakao.UserApi.instance.loginWithKakaoTalk();
         } catch (error) {
           // If KakaoTalk login fails, fallback to web login
-          token = await kakao.UserApi.instance.loginWithKakaoAccount();
+          await kakao.UserApi.instance.loginWithKakaoAccount();
         }
       } else {
         // Login with web browser
-        token = await kakao.UserApi.instance.loginWithKakaoAccount();
+        await kakao.UserApi.instance.loginWithKakaoAccount();
       }
 
       // Get user information from Kakao
