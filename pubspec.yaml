@@ -31,6 +31,7 @@ dependencies:
   
   # Social Login
   google_sign_in: ^6.1.6
+  kakao_flutter_sdk_user: ^1.9.5
   # sign_in_with_apple: ^5.0.0
   
   # Navigation

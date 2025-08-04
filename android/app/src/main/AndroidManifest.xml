@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Internet permission for Kakao Login -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
     <application
         android:label="vendor_ads"
         android:name="${applicationName}"
@@ -23,6 +26,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        
+        <!-- Kakao Login -->
+        <activity 
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:host="oauth"
+                      android:scheme="kakaoa22df9f48c7bd192fa4cc21ee0e8f923" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

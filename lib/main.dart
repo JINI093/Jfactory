@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
@@ -13,6 +14,12 @@ void main() async {
   // Initialize Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // Initialize Kakao SDK
+  KakaoSdk.init(
+    nativeAppKey: 'a22df9f48c7bd192fa4cc21ee0e8f923',
+    javaScriptAppKey: 'a22df9f48c7bd192fa4cc21ee0e8f923',
   );
   
   runApp(const MyApp());

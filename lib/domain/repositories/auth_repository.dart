@@ -4,6 +4,7 @@ abstract class AuthRepository {
   Future<UserEntity?> getCurrentUser();
   Future<UserEntity> signInWithEmail(String email, String password);
   Future<UserEntity> signInWithGoogle();
+  Future<UserEntity> signInWithKakao();
   Future<UserEntity> signUpWithEmail({
     required String email,
     required String password,

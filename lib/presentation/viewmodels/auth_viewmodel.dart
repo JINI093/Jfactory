@@ -256,8 +256,11 @@ class AuthViewModel extends ChangeNotifier {
       _status = AuthStatus.authenticating;
       notifyListeners();
 
-      // TODO: Kakao Sign-In 구현
-      throw UnimplementedError('카카오 로그인은 아직 구현되지 않았습니다.');
+      final user = await _authRepository.signInWithKakao();
+      _currentUser = user;
+      _status = AuthStatus.authenticated;
+      
+      return true;
     } catch (e) {
       _errorMessage = e.toString().replaceAll('Exception: ', '');
       _status = AuthStatus.error;

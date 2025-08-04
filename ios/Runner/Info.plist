@@ -45,5 +45,29 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Kakao Login Configuration -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>kakao</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kakaoa22df9f48c7bd192fa4cc21ee0e8f923</string>
+			</array>
+		</dict>
+	</array>
+	
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>kakaokompassauth</string>
+		<string>storykompassauth</string>
+		<string>kakaolink</string>
+		<string>kakaotalk</string>
+	</array>
+	
+	<key>KAKAO_APP_KEY</key>
+	<string>a22df9f48c7bd192fa4cc21ee0e8f923</string>
 </dict>
 </plist>
