@@ -22,6 +22,8 @@ void main() async {
     javaScriptAppKey: 'a22df9f48c7bd192fa4cc21ee0e8f923',
   );
   
+  // Naver Login initialization is handled by the plugin automatically
+  
   runApp(const MyApp());
 }
 

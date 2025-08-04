@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
+import 'package:flutter_naver_login/flutter_naver_login.dart';
 import '../models/user_model.dart';
 import '../../domain/entities/user_entity.dart';
 
@@ -9,6 +10,7 @@ abstract class FirebaseAuthDataSource {
   Future<UserModel> signInWithEmail(String email, String password);
   Future<UserModel> signInWithGoogle();
   Future<UserModel> signInWithKakao();
+  Future<UserModel> signInWithNaver();
   Future<UserModel> signUpWithEmail(String email, String password, String name, String phone, UserType userType);
   Future<void> signOut();
   Future<void> sendPasswordResetEmail(String email);
@@ -178,6 +180,61 @@ class FirebaseAuthDataSourceImpl implements FirebaseAuthDataSource {
   }
 
   @override
+  Future<UserModel> signInWithNaver() async {
+    try {
+      // Authenticate with Naver
+      var result = await FlutterNaverLogin.logIn();
+      
+      // Check if login was successful
+      if (result.account == null) {
+        throw Exception('네이버 로그인이 취소되었습니다.');
+      }
+
+      // Get user information from result
+      final account = result.account!;
+      
+      final String email = account.email ?? '${account.id}@naver.local';
+      final String name = account.name ?? account.nickname ?? 'Naver User';
+      final String phone = account.mobile ?? '';
+
+      // Create or get Firebase user using email/password auth
+      UserCredential userCredential;
+      try {
+        // Try to sign in with email (if user exists)
+        userCredential = await _firebaseAuth.signInWithEmailAndPassword(
+          email: email, 
+          password: 'naver_${account.id}',
+        );
+      } catch (e) {
+        // User doesn't exist, create new user
+        userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
+          email: email,
+          password: 'naver_${account.id}',
+        );
+        
+        // Update display name
+        await userCredential.user?.updateDisplayName(name);
+      }
+      
+      final user = userCredential.user;
+      if (user == null) {
+        throw Exception('네이버 로그인에 실패했습니다.');
+      }
+
+      return UserModel(
+        uid: user.uid,
+        email: email,
+        name: name,
+        phone: phone,
+        userType: UserType.individual,
+        createdAt: user.metadata.creationTime ?? DateTime.now(),
+      );
+    } catch (e) {
+      throw Exception('네이버 로그인 중 오류가 발생했습니다: ${e.toString()}');
+    }
+  }
+
+  @override
   Future<UserModel> signUpWithEmail(
     String email,
     String password,
@@ -219,6 +276,7 @@ class FirebaseAuthDataSourceImpl implements FirebaseAuthDataSource {
         _firebaseAuth.signOut(),
         _googleSignIn.signOut(),
         _signOutKakao(),
+        _signOutNaver(),
       ]);
     } on FirebaseAuthException catch (e) {
       throw Exception(_handleAuthException(e));
@@ -230,6 +288,15 @@ class FirebaseAuthDataSourceImpl implements FirebaseAuthDataSource {
       await kakao.UserApi.instance.logout();
     } catch (e) {
       // Kakao logout might fail if user is not logged in via Kakao
+      // This is acceptable, so we don't throw an error
+    }
+  }
+
+  Future<void> _signOutNaver() async {
+    try {
+      await FlutterNaverLogin.logOut();
+    } catch (e) {
+      // Naver logout might fail if user is not logged in via Naver
       // This is acceptable, so we don't throw an error
     }
   }

@@ -85,6 +85,27 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<UserEntity> signInWithNaver() async {
+    try {
+      final userModel = await _authDataSource.signInWithNaver();
+      
+      // Firestore에서 기존 사용자 정보 확인
+      final existingUser = await _firestoreDataSource.getUser(userModel.uid);
+      
+      if (existingUser != null) {
+        // 기존 사용자인 경우
+        return existingUser.toEntity();
+      } else {
+        // 새로운 사용자인 경우 Firestore에 저장
+        await _firestoreDataSource.createUser(userModel);
+        return userModel.toEntity();
+      }
+    } catch (e) {
+      throw Exception('네이버 로그인 중 오류 발생: $e');
+    }
+  }
+
+  @override
   Future<UserEntity> signUpWithEmail({
     required String email,
     required String password,

@@ -41,6 +41,15 @@
                       android:scheme="kakaoa22df9f48c7bd192fa4cc21ee0e8f923" />
             </intent-filter>
         </activity>
+        
+        <!-- Naver Login -->
+        <activity
+            android:name="com.nhn.android.naverlogin.ui.view.OAuthLoginActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        
+        <activity
+            android:name="com.nhn.android.naverlogin.ui.view.OAuthLoginInAppBrowserActivity"
+            android:label="OAuth2.0 In-app" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

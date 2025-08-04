@@ -46,15 +46,25 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	
-	<!-- Kakao Login Configuration -->
+	<!-- Social Login Configuration -->
 	<key>CFBundleURLTypes</key>
 	<array>
+		<!-- Kakao Login -->
 		<dict>
 			<key>CFBundleURLName</key>
 			<string>kakao</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>kakaoa22df9f48c7bd192fa4cc21ee0e8f923</string>
+			</array>
+		</dict>
+		<!-- Naver Login -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>naver</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>naverlogin</string>
 			</array>
 		</dict>
 	</array>
@@ -65,9 +75,18 @@
 		<string>storykompassauth</string>
 		<string>kakaolink</string>
 		<string>kakaotalk</string>
+		<string>naversearchapp</string>
+		<string>naversearchthirdlogin</string>
 	</array>
 	
 	<key>KAKAO_APP_KEY</key>
 	<string>a22df9f48c7bd192fa4cc21ee0e8f923</string>
+	
+	<key>NAVER_CLIENT_ID</key>
+	<string>0Yn_U4Zvuccup1dIyQAi</string>
+	<key>NAVER_CLIENT_SECRET</key>
+	<string>PYehz3hond</string>
+	<key>NAVER_CLIENT_NAME</key>
+	<string>Vendor Ads</string>
 </dict>
 </plist>
