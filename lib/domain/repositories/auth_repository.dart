@@ -18,7 +18,7 @@ abstract class AuthRepository {
   Future<void> updateUserProfile(UserEntity user);
   Stream<UserEntity?> get authStateChanges;
   Future<void> deleteAccount();
-  Future<bool> checkEmailExists(String email);
-  Future<void> updateEmail(String newEmail);
-  Future<void> updatePassword(String newPassword);
+  // Future<bool> checkEmailExists(String email);
+  // Future<void> updateEmail(String newEmail);
+  // Future<void> updatePassword(String newPassword);
 }

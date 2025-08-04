@@ -11,11 +11,7 @@ class SignUpUserUseCase {
     _validateInput(params);
 
     try {
-      // 이메일 중복 확인
-      final emailExists = await _authRepository.checkEmailExists(params.email);
-      if (emailExists) {
-        throw Exception('이미 사용 중인 이메일입니다.');
-      }
+      // 이메일 중복 확인은 Firebase Auth에서 자동으로 처리됨
 
       // 회원가입 처리
       return await _authRepository.signUpWithEmail(
