@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "366878131351",
+    "project_id": "j-factory",
+    "storage_bucket": "j-factory.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:366878131351:android:cef8649585fb60acb255d2",
+        "android_client_info": {
+          "package_name": "com.example.vendor_ads"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHWWFg_Jah3XfL-_3FqN3O9DOJkFs5dyA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "366878131351-tmjafr92ga7m0onapkadtjhtvbcd2pka.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "j.fatory"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:366878131351:android:954f1e84ae13ee69b255d2",
+        "android_client_info": {
+          "package_name": "j.factory"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHWWFg_Jah3XfL-_3FqN3O9DOJkFs5dyA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "366878131351-tmjafr92ga7m0onapkadtjhtvbcd2pka.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "j.fatory"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

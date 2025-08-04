@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../viewmodels/company_viewmodel.dart';
+import '../../../domain/entities/company_entity.dart';
 
 class CompanyDetailView extends StatefulWidget {
   final String companyId;
@@ -42,15 +43,8 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
               if (viewModel.selectedCompany == null) return const SizedBox();
               
               return IconButton(
-                icon: Icon(
-                  viewModel.selectedCompany!['isFavorite'] 
-                      ? Icons.favorite 
-                      : Icons.favorite_border,
-                  color: viewModel.selectedCompany!['isFavorite'] 
-                      ? Colors.red 
-                      : null,
-                ),
-                onPressed: viewModel.toggleFavorite,
+                icon: const Icon(Icons.favorite_border),
+                onPressed: () => viewModel.toggleFavorite(viewModel.selectedCompany!.id),
               );
             },
           ),
@@ -95,14 +89,14 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.grey[300],
-                    image: company['imageUrl'] != null
+                    image: company.logo != null
                         ? DecorationImage(
-                            image: NetworkImage(company['imageUrl']),
+                            image: NetworkImage(company.logo!),
                             fit: BoxFit.cover,
                           )
                         : null,
                   ),
-                  child: company['imageUrl'] == null
+                  child: company.logo == null
                       ? const Center(
                           child: Icon(
                             Icons.business,
@@ -121,7 +115,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        company['name'],
+                        company.companyName,
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -133,7 +127,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
                           Icon(Icons.category, size: 20, color: Colors.grey[600]),
                           const SizedBox(width: 8),
                           Text(
-                            company['category'],
+                            company.category,
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey[700],
@@ -143,7 +137,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
                           Icon(Icons.location_on, size: 20, color: Colors.grey[600]),
                           const SizedBox(width: 8),
                           Text(
-                            company['location'],
+                            company.address,
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey[700],
@@ -205,9 +199,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
     );
   }
 
-  Widget _buildEquipmentCard(Map<String, dynamic> company) {
-    final specs = company['specifications'] as Map<String, dynamic>;
-    
+  Widget _buildEquipmentCard(CompanyEntity company) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[50],
@@ -218,34 +210,22 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            company['equipment'],
+            'Company Information',
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${company['manufacturer']} - ${company['model']}',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[700],
-            ),
-          ),
           const SizedBox(height: 16),
-          const Text(
-            'Specifications',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildSpecRow('Axis', 'X: ${specs['x']}, Y: ${specs['y']}, Z: ${specs['z']}'),
-          _buildSpecRow('Angle', '${specs['angle']}°'),
-          _buildSpecRow('Table Size', specs['tableSize']),
-          _buildSpecRow('Features', specs['features']),
-          _buildSpecRow('Quantity', specs['quantity']),
+          _buildSpecRow('Company Name', company.companyName),
+          _buildSpecRow('CEO', company.ceoName),
+          _buildSpecRow('Phone', company.phone),
+          _buildSpecRow('Address', company.address),
+          _buildSpecRow('Category', company.category),
+          if (company.subcategory.isNotEmpty)
+            _buildSpecRow('Subcategory', company.subcategory),
+          if (company.website != null)
+            _buildSpecRow('Website', company.website!),
         ],
       ),
     );

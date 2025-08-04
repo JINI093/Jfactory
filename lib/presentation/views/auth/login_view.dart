@@ -15,7 +15,8 @@ class LoginView extends StatefulWidget {
 class _LoginViewState extends State<LoginView> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _agreeToTerms = false;
+  bool _autoLogin = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -33,7 +34,7 @@ class _LoginViewState extends State<LoginView> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.of(context).maybePop(),
+          onPressed: () => context.go(RouteNames.main),
         ),
         title: const Text(
           '뒤로가기',
@@ -75,26 +76,29 @@ class _LoginViewState extends State<LoginView> {
                         isPassword: true,
                       ),
                       
-                      SizedBox(height: 8.h),
+                      SizedBox(height: 12.h),
                       
-                      // Links Row
-                      _buildLinksRow(),
+                      // Login Button
+                      _buildLoginButton(),
                       
-                      SizedBox(height: 15.h),
+                      SizedBox(height: 16.h),
                       
-                      // Social Login Section
-                      _buildSocialLoginSection(),
+                      // Divider with "또는"
+                      _buildDivider(),
                       
-                      SizedBox(height: 15.h),
+                      SizedBox(height: 16.h),
+                      
+                      // Social Login Buttons
+                      _buildSocialButtons(),
+                      
+                      SizedBox(height: 24.h),
+                      
+                      // Bottom Links
+                      _buildBottomLinks(),
                     ],
                   ),
                 ),
               ),
-              
-              // Login Button
-              _buildLoginButton(),
-              
-              SizedBox(height: 15.h),
             ],
           ),
         ),
@@ -102,38 +106,97 @@ class _LoginViewState extends State<LoginView> {
     );
   }
 
-
   Widget _buildLogoSection() {
-    return Image.asset(
-      'assets/icons/main_logo.png',
-      width: 300.w,
-      height: 150.h,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        // Fallback if image is missing
-        return Column(
+    return Column(
+      children: [
+        Container(
+          width: 80.w,
+          height: 80.w,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E3A5F),
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          child: Icon(
+            Icons.business,
+            color: Colors.white,
+            size: 40.sp,
+          ),
+        ),
+        SizedBox(height: 12.h),
+        Text(
+          '로그인',
+          style: TextStyle(
+            fontSize: 28.sp,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 6.h),
+        Text(
+          '계정에 로그인하여 서비스를 이용하세요',
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmailFieldWithAutoLogin() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInputField(
+          label: '이메일',
+          controller: _emailController,
+          hintText: '이메일을 입력해주세요.',
+          keyboardType: TextInputType.emailAddress,
+        ),
+        SizedBox(height: 8.h),
+        Row(
           children: [
-            Container(
-              width: 80.w,
-              height: 80.h,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E3A5F),
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: Center(
-                child: Text(
-                  'J',
-                  style: TextStyle(
-                    fontSize: 48.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _autoLogin = !_autoLogin;
+                });
+              },
+              child: Row(
+                children: [
+                  Container(
+                    width: 20.w,
+                    height: 20.w,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _autoLogin ? const Color(0xFF1E3A5F) : Colors.grey,
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(4.r),
+                      color: _autoLogin ? const Color(0xFF1E3A5F) : Colors.transparent,
+                    ),
+                    child: _autoLogin
+                        ? Icon(
+                            Icons.check,
+                            size: 14.sp,
+                            color: Colors.white,
+                          )
+                        : null,
                   ),
-                ),
+                  SizedBox(width: 8.w),
+                  Text(
+                    '자동 로그인',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 
@@ -152,314 +215,44 @@ class _LoginViewState extends State<LoginView> {
           style: TextStyle(
             fontSize: 14.sp,
             fontWeight: FontWeight.w500,
-            color: Colors.black87,
+            color: Colors.black,
           ),
         ),
         SizedBox(height: 8.h),
-        TextField(
-          controller: controller,
-          obscureText: isPassword,
-          keyboardType: keyboardType,
-          style: TextStyle(fontSize: 16.sp),
-          decoration: InputDecoration(
-            hintText: hintText,
-            hintStyle: TextStyle(
-              fontSize: 16.sp,
-              color: Colors.grey[400],
-            ),
-            filled: true,
-            fillColor: const Color(0xFFEFF5FF),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: const BorderSide(
-                color: Color(0xFF1E3A5F),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 16.w,
-              vertical: 16.h,
-            ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(8.r),
+            border: Border.all(color: Colors.grey[300]!),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmailFieldWithAutoLogin() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '이메일',
-              style: TextStyle(
+          child: TextField(
+            controller: controller,
+            obscureText: isPassword,
+            keyboardType: keyboardType,
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(
+                color: Colors.grey[400],
                 fontSize: 14.sp,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
+              ),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 16.w,
+                vertical: 14.h,
               ),
             ),
-            Row(
-              children: [
-                SizedBox(
-                  width: 20.w,
-                  height: 20.h,
-                  child: Checkbox(
-                    value: _agreeToTerms,
-                    onChanged: (value) {
-                      setState(() {
-                        _agreeToTerms = value ?? false;
-                      });
-                    },
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(3.r),
-                    ),
-                    activeColor: const Color(0xFF1E3A5F),
-                  ),
-                ),
-                SizedBox(width: 6.w),
-                Text(
-                  '자동 로그인',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        SizedBox(height: 8.h),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          style: TextStyle(fontSize: 16.sp),
-          decoration: InputDecoration(
-            hintText: '이메일을 입력해주세요.',
-            hintStyle: TextStyle(
-              fontSize: 16.sp,
-              color: Colors.grey[400],
-            ),
-            filled: true,
-            fillColor: const Color(0xFFEFF5FF),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: const BorderSide(
-                color: Color(0xFF1E3A5F),
-                width: 1.5,
-              ),
-            ),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 16.w,
-              vertical: 16.h,
-            ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildLinksRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        TextButton(
-          onPressed: () {
-            // Navigate to find email/password
-          },
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(
-            '이메일 / 비밀번호 찾기',
-            style: TextStyle(
-              fontSize: 13.sp,
-              color: Colors.grey[600],
-              decoration: TextDecoration.underline,
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: () {
-            context.go(RouteNames.signup);
-          },
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(
-            '회원가입',
-            style: TextStyle(
-              fontSize: 13.sp,
-              color: Colors.grey[600],
-              decoration: TextDecoration.underline,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTermsCheckbox() {
-    return Row(
-      children: [
-        SizedBox(
-          width: 24.w,
-          height: 24.h,
-          child: Checkbox(
-            value: _agreeToTerms,
-            onChanged: (value) {
-              setState(() {
-                _agreeToTerms = value ?? false;
-              });
-            },
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4.r),
-            ),
-            activeColor: const Color(0xFF1E3A5F),
-          ),
-        ),
-        SizedBox(width: 8.w),
-        Text(
-          '자동 로그인',
-          style: TextStyle(
-            fontSize: 14.sp,
-            color: Colors.black87,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialLoginSection() {
-    return Column(
-      children: [
-        Divider(
-          height: 1,
-          thickness: 1,
-          color: Colors.grey[300],
-        ),
-        SizedBox(height: 16.h),
-        Text(
-          'SNS 로그인',
-          style: TextStyle(
-            fontSize: 14.sp,
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        SizedBox(height: 12.h),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildSocialButton('assets/icons/google.png', () {
-              _handleSocialLogin('google');
-            }),
-            SizedBox(width: 16.w),
-            _buildSocialButton('assets/icons/apple.png', () {
-              _handleSocialLogin('apple');
-            }),
-            SizedBox(width: 16.w),
-            _buildSocialButton('assets/icons/kakao.png', () {
-              _handleSocialLogin('kakao');
-            }),
-            SizedBox(width: 16.w),
-            _buildSocialButton('assets/icons/naver.png', () {
-              _handleSocialLogin('naver');
-            }),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialButton(String assetPath, VoidCallback onPressed) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        width: 48.w,
-        height: 48.h,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.grey[300]!,
-            width: 1,
-          ),
-        ),
-        child: Center(
-          child: Image.asset(
-            assetPath,
-            width: 24.w,
-            height: 24.h,
-            errorBuilder: (context, error, stackTrace) {
-              // Fallback icons for social buttons
-              String provider = assetPath.split('/').last.split('.').first;
-              IconData iconData;
-              Color iconColor;
-              
-              switch (provider) {
-                case 'google':
-                  iconData = Icons.g_mobiledata;
-                  iconColor = Colors.red;
-                  break;
-                case 'apple':
-                  iconData = Icons.apple;
-                  iconColor = Colors.black;
-                  break;
-                case 'kakao':
-                  iconData = Icons.chat_bubble;
-                  iconColor = const Color(0xFFFEE500);
-                  break;
-                case 'naver':
-                  iconData = Icons.navigation;
-                  iconColor = const Color(0xFF03C75A);
-                  break;
-                default:
-                  iconData = Icons.login;
-                  iconColor = Colors.grey;
-              }
-              
-              return Icon(
-                iconData,
-                size: 24.w,
-                color: iconColor,
-              );
-            },
-          ),
-        ),
-      ),
     );
   }
 
   Widget _buildLoginButton() {
     return SizedBox(
       width: double.infinity,
-      height: 56.h,
+      height: 48.h,
       child: ElevatedButton(
-        onPressed: _agreeToTerms ? _handleLogin : null,
+        onPressed: _isLoading ? null : _handleLogin,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF1E3A5F),
           disabledBackgroundColor: Colors.grey[300],
@@ -468,59 +261,210 @@ class _LoginViewState extends State<LoginView> {
           ),
           elevation: 0,
         ),
+        child: _isLoading
+            ? SizedBox(
+                width: 20.sp,
+                height: 20.sp,
+                child: const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                '로그인',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: Colors.grey[300])),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Text(
+            '또는',
+            style: TextStyle(
+              color: Colors.grey[500],
+              fontSize: 12.sp,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: Colors.grey[300])),
+      ],
+    );
+  }
+
+  Widget _buildSocialButtons() {
+    return Column(
+      children: [
+        _buildSocialButton(
+          '구글로 로그인',
+          Colors.white,
+          Colors.black,
+          () => _handleSocialLogin('google'),
+        ),
+        SizedBox(height: 8.h),
+        _buildSocialButton(
+          '카카오로 로그인',
+          const Color(0xFFFEE500),
+          Colors.black,
+          () => _handleSocialLogin('kakao'),
+        ),
+        SizedBox(height: 8.h),
+        _buildSocialButton(
+          '네이버로 로그인',
+          const Color(0xFF03C75A),
+          Colors.white,
+          () => _handleSocialLogin('naver'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSocialButton(
+    String text,
+    Color backgroundColor,
+    Color textColor,
+    VoidCallback onPressed,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48.h,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          side: BorderSide(color: Colors.grey[300]!),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.r),
+          ),
+        ),
         child: Text(
-          '로그인',
+          text,
           style: TextStyle(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
+            color: textColor,
           ),
         ),
       ),
     );
   }
 
-  void _handleLogin() {
+  Widget _buildBottomLinks() {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '계정이 없으신가요? ',
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey[600],
+              ),
+            ),
+            GestureDetector(
+              onTap: () => context.go(RouteNames.signup),
+              child: Text(
+                '회원가입',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: const Color(0xFF1E3A5F),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        GestureDetector(
+          onTap: _handleForgotPassword,
+          child: Text(
+            '비밀번호를 잊으셨나요?',
+            style: TextStyle(
+              fontSize: 12.sp,
+              color: Colors.grey[500],
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('이메일과 비밀번호를 입력해주세요.')),
       );
       return;
     }
-    
-    _performLogin();
-  }
 
-  void _performLogin() async {
-    try {
-      final authViewModel = context.read<AuthViewModel>();
-      
-      await authViewModel.login(
-        _emailController.text.trim(),
-        _passwordController.text,
+    setState(() {
+      _isLoading = true;
+    });
+
+    final authViewModel = context.read<AuthViewModel>();
+    final success = await authViewModel.signInWithEmail(
+      _emailController.text,
+      _passwordController.text,
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (success) {
+      context.go(RouteNames.main);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(authViewModel.errorMessage ?? '로그인에 실패했습니다.')),
       );
-      
-      if (!mounted) return;
-      
-      if (authViewModel.isLoggedIn) {
-        context.go(RouteNames.main);
-      } else if (authViewModel.error != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(authViewModel.error ?? '로그인에 실패했습니다.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('로그인 중 오류가 발생했습니다.')),
-        );
-      }
     }
   }
 
-  void _handleSocialLogin(String provider) {
+  void _handleSocialLogin(String provider) async {
+    final authViewModel = context.read<AuthViewModel>();
+    bool success = false;
+
+    switch (provider) {
+      case 'google':
+        success = await authViewModel.signInWithGoogle();
+        break;
+      case 'kakao':
+        success = await authViewModel.signInWithKakao();
+        break;
+      case 'naver':
+        success = await authViewModel.signInWithNaver();
+        break;
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$provider 로그인 기능은 준비 중입니다.')),
+        );
+        return;
+    }
+
+    if (success) {
+      context.go(RouteNames.main);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(authViewModel.errorMessage ?? '$provider 로그인에 실패했습니다.')),
+      );
+    }
+  }
+
+  void _handleForgotPassword() {
+    // TODO: Implement forgot password
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$provider 로그인은 준비 중입니다.')),
+      const SnackBar(content: Text('비밀번호 재설정 기능은 준비 중입니다.')),
     );
   }
 }

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/category_model.dart';
+import '../../../domain/entities/company_entity.dart';
+import '../../viewmodels/company_viewmodel.dart';
 
 class CategoryDetailView extends StatefulWidget {
   final String categoryTitle;
@@ -16,6 +19,31 @@ class CategoryDetailView extends StatefulWidget {
 }
 
 class _CategoryDetailViewState extends State<CategoryDetailView> {
+  final TextEditingController _searchController = TextEditingController();
+  String? _selectedSubcategory;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCompanies();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _loadCompanies() {
+    final companyViewModel = context.read<CompanyViewModel>();
+    companyViewModel.loadCompaniesByCategory(
+      widget.categoryTitle,
+      subcategory: _selectedSubcategory,
+    );
+  }
+
   CategoryModel? get _currentCategory {
     print('Original categoryTitle: ${widget.categoryTitle}');
     
@@ -140,6 +168,11 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
           borderRadius: BorderRadius.circular(8.r),
         ),
         child: TextField(
+          controller: _searchController,
+          onChanged: (value) {
+            final companyViewModel = context.read<CompanyViewModel>();
+            companyViewModel.searchCompanies(value);
+          },
           decoration: InputDecoration(
             hintText: '키워드로 검색해보세요',
             hintStyle: TextStyle(
@@ -190,11 +223,12 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   Widget _buildSubcategoryCard(String subcategory) {
+    final isSelected = _selectedSubcategory == subcategory;
     return Container(
       width: 64.w,
       height: 64.h,
       decoration: BoxDecoration(
-        color: const Color(0xFFC6D6E8),
+        color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFFC6D6E8),
         borderRadius: BorderRadius.circular(10.r),
       ),
       child: Material(
@@ -202,12 +236,13 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
         child: InkWell(
           borderRadius: BorderRadius.circular(10.r),
           onTap: () {
-            // TODO: Navigate to subcategory products
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('$subcategory 선택됨'),
-                duration: const Duration(seconds: 1),
-              ),
+            setState(() {
+              _selectedSubcategory = _selectedSubcategory == subcategory ? null : subcategory;
+            });
+            final companyViewModel = context.read<CompanyViewModel>();
+            companyViewModel.loadCompaniesByCategory(
+              widget.categoryTitle,
+              subcategory: _selectedSubcategory,
             );
           },
           child: Center(
@@ -216,7 +251,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
               style: TextStyle(
                 fontSize: 12.sp,
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: isSelected ? Colors.white : Colors.black87,
               ),
               textAlign: TextAlign.center,
               maxLines: 2,
@@ -267,58 +302,75 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   Widget _buildPremiumSection() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Consumer<CompanyViewModel>(
+      builder: (context, viewModel, child) {
+        if (viewModel.isLoading) {
+          return _buildLoadingSection();
+        }
+
+        if (viewModel.errorMessage != null) {
+          return _buildErrorSection(viewModel.errorMessage!);
+        }
+
+        final premiumCompanies = viewModel.premiumCompanies;
+        if (premiumCompanies.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          margin: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '프리미엄 상품',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '프리미엄 상품',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  Text(
+                    '${premiumCompanies.length}개',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                '1/9',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Colors.grey[600],
+              SizedBox(height: 16.h),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 12.w,
+                  mainAxisSpacing: 12.h,
                 ),
+                itemCount: premiumCompanies.length,
+                itemBuilder: (context, index) {
+                  return GestureDetector(
+                    onTap: () {
+                      context.push('/company/${premiumCompanies[index].id}');
+                    },
+                    child: _buildPremiumCard(premiumCompanies[index]),
+                  );
+                },
               ),
+              SizedBox(height: 20.h),
             ],
           ),
-          SizedBox(height: 16.h),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 12.w,
-              mainAxisSpacing: 12.h,
-            ),
-            itemCount: 4,
-            itemBuilder: (context, index) {
-              return GestureDetector(
-                onTap: () {
-                  context.push('/post/${index + 1}');
-                },
-                child: _buildPremiumCard(),
-              );
-            },
-          ),
-          SizedBox(height: 20.h),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildPremiumCard() {
+  Widget _buildPremiumCard(CompanyEntity company) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -346,38 +398,38 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
-                  child: Image.asset(
-                    'assets/images/sample.png',
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: double.infinity,
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.business,
-                          size: 40.sp,
-                          color: Colors.grey[500],
-                        ),
-                      );
-                    },
-                  ),
+                  child: company.logo != null && company.logo!.isNotEmpty
+                      ? Image.network(
+                          company.logo!,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildFallbackImage();
+                          },
+                        )
+                      : _buildFallbackImage(),
                 ),
               ),
               Positioned(
                 top: 8.h,
                 right: 8.w,
-                child: Container(
-                  width: 32.w,
-                  height: 32.h,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.favorite,
-                    color: Colors.red,
-                    size: 18.sp,
+                child: GestureDetector(
+                  onTap: () {
+                    final companyViewModel = context.read<CompanyViewModel>();
+                    companyViewModel.toggleFavorite(company.id);
+                  },
+                  child: Container(
+                    width: 32.w,
+                    height: 32.h,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.favorite_border,
+                      color: Colors.red,
+                      size: 18.sp,
+                    ),
                   ),
                 ),
               ),
@@ -389,7 +441,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '기업명 및 로고',
+                  company.companyName,
                   style: TextStyle(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.w600,
@@ -400,7 +452,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  '카테고리 설명',
+                  company.greeting ?? company.subcategory,
                   style: TextStyle(
                     fontSize: 11.sp,
                     color: Colors.grey[500],
@@ -417,46 +469,85 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   Widget _buildGeneralPostsSection() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '일반게시글',
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+    return Consumer<CompanyViewModel>(
+      builder: (context, viewModel, child) {
+        if (viewModel.isLoading) {
+          return const SizedBox.shrink();
+        }
+
+        final generalCompanies = viewModel.generalCompanies;
+        if (generalCompanies.isEmpty && viewModel.premiumCompanies.isEmpty) {
+          return Container(
+            margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 40.h),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.business_outlined,
+                    size: 64.sp,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '해당 카테고리에 등록된 기업이 없습니다.',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          SizedBox(height: 16.h),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.85,
-              crossAxisSpacing: 8.w,
-              mainAxisSpacing: 12.h,
-            ),
-            itemCount: 12,
-            itemBuilder: (context, index) {
-              return GestureDetector(
-                onTap: () {
-                  context.push('/post/${index + 5}');
+          );
+        }
+
+        if (generalCompanies.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Container(
+          margin: EdgeInsets.symmetric(horizontal: 16.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '일반기업',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+              ),
+              SizedBox(height: 16.h),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 0.85,
+                  crossAxisSpacing: 8.w,
+                  mainAxisSpacing: 12.h,
+                ),
+                itemCount: generalCompanies.length,
+                itemBuilder: (context, index) {
+                  return GestureDetector(
+                    onTap: () {
+                      context.push('/company/${generalCompanies[index].id}');
+                    },
+                    child: _buildGeneralPostCard(generalCompanies[index]),
+                  );
                 },
-                child: _buildGeneralPostCard(),
-              );
-            },
+              ),
+              SizedBox(height: 20.h),
+            ],
           ),
-          SizedBox(height: 20.h),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildGeneralPostCard() {
+  Widget _buildGeneralPostCard(CompanyEntity company) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -483,50 +574,52 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
-                  child: Image.asset(
-                    'assets/images/sample.png',
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: double.infinity,
-                        height: double.infinity,
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.business,
-                          size: 24.sp,
-                          color: Colors.grey[500],
-                        ),
-                      );
-                    },
-                  ),
+                  child: company.logo != null && company.logo!.isNotEmpty
+                      ? Image.network(
+                          company.logo!,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildSmallFallbackImage();
+                          },
+                        )
+                      : _buildSmallFallbackImage(),
                 ),
                 Positioned(
                   top: 6.h,
                   left: 6.w,
-                  child: Text(
-                    '기업명 및 로고',
-                    style: TextStyle(
-                      fontSize: 8.sp,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black45,
-                          offset: Offset(0.5, 0.5),
-                        ),
-                      ],
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4.r),
+                    ),
+                    child: Text(
+                      company.companyName,
+                      style: TextStyle(
+                        fontSize: 8.sp,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
                 Positioned(
                   top: 6.h,
                   right: 6.w,
-                  child: Icon(
-                    Icons.favorite,
-                    color: Colors.red,
-                    size: 16.sp,
+                  child: GestureDetector(
+                    onTap: () {
+                      final companyViewModel = context.read<CompanyViewModel>();
+                      companyViewModel.toggleFavorite(company.id);
+                    },
+                    child: Icon(
+                      Icons.favorite_border,
+                      color: Colors.red,
+                      size: 16.sp,
+                    ),
                   ),
                 ),
               ],
@@ -536,7 +629,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
             width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 6.h),
             child: Text(
-              '카테고리 설명',
+              company.subcategory,
               style: TextStyle(
                 fontSize: 10.sp,
                 color: Colors.black87,
@@ -548,6 +641,80 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingSection() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 40.h),
+      child: const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+
+  Widget _buildErrorSection(String error) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 40.h),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64.sp,
+              color: Colors.red[400],
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              '오류가 발생했습니다',
+              style: TextStyle(
+                fontSize: 16.sp,
+                color: Colors.grey[800],
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              error,
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 16.h),
+            ElevatedButton(
+              onPressed: _loadCompanies,
+              child: const Text('다시 시도'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFallbackImage() {
+    return Container(
+      width: double.infinity,
+      color: Colors.grey[300],
+      child: Icon(
+        Icons.business,
+        size: 40.sp,
+        color: Colors.grey[500],
+      ),
+    );
+  }
+
+  Widget _buildSmallFallbackImage() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.grey[300],
+      child: Icon(
+        Icons.business,
+        size: 24.sp,
+        color: Colors.grey[500],
       ),
     );
   }

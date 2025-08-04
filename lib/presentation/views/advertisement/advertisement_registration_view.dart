@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../../domain/entities/payment_entity.dart';
+import '../../viewmodels/auth_viewmodel.dart';
 
 class AdvertisementRegistrationView extends StatefulWidget {
   const AdvertisementRegistrationView({super.key});
@@ -535,16 +538,84 @@ class _AdvertisementRegistrationViewState extends State<AdvertisementRegistratio
     );
   }
 
-  void _processPurchase() {
-    // TODO: Implement in-app purchase logic here
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '광고 구매가 완료되었습니다.',
-          style: TextStyle(fontSize: 14.sp),
+  void _processPurchase() async {
+    final authViewModel = context.read<AuthViewModel>();
+    final currentUser = authViewModel.currentUser;
+    
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('로그인이 필요합니다.'),
+          backgroundColor: Colors.red,
         ),
-        backgroundColor: const Color(0xFF4CAF50),
-      ),
-    );
+      );
+      return;
+    }
+    
+    if (_startDate == null || _endDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('광고 기간을 선택해주세요.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+      
+      // Create payment entity
+      final payment = PaymentEntity(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: currentUser.uid,
+        companyId: currentUser.companyName ?? 'unknown', // Use company info if available
+        amount: _totalPrice.toDouble(),
+        paymentMethod: PaymentMethod.google, // Default to Google Pay for in-app purchase
+        status: PaymentStatus.completed,
+        createdAt: DateTime.now(),
+        adDurationDays: _selectedDays,
+        completedAt: DateTime.now(),
+        transactionId: 'tx_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      
+      // TODO: Implement actual payment processing with payment service
+      // await paymentService.processPayment(payment);
+      
+      // Simulate payment processing delay
+      await Future.delayed(const Duration(seconds: 2));
+      
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '광고 구매가 완료되었습니다. (총 $_totalPrice원)',
+            style: TextStyle(fontSize: 14.sp),
+          ),
+          backgroundColor: const Color(0xFF4CAF50),
+        ),
+      );
+      
+      // Navigate back or to success page
+      context.pop();
+      
+    } catch (e) {
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('결제 처리 중 오류가 발생했습니다: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

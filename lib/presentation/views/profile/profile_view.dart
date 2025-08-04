@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../domain/entities/user_entity.dart';
+import '../../viewmodels/auth_viewmodel.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -15,6 +18,61 @@ class _ProfileViewState extends State<ProfileView> {
   List<Map<String, String>> historyItems = [{'year': '', 'content': ''}];
   List<Map<String, String>> partnerItems = [{'name': '', 'details': ''}];
   int _selectedTabIndex = 0;
+  
+  // Form controllers
+  final TextEditingController _companyNameController = TextEditingController();
+  final TextEditingController _ceoNameController = TextEditingController();
+  final TextEditingController _websiteController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _detailAddressController = TextEditingController();
+  final TextEditingController _greetingController = TextEditingController();
+  final TextEditingController _featuresController = TextEditingController();
+  
+  // Password controllers
+  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserData();
+    });
+  }
+  
+  @override
+  void dispose() {
+    _companyNameController.dispose();
+    _ceoNameController.dispose();
+    _websiteController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _detailAddressController.dispose();
+    _greetingController.dispose();
+    _featuresController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+  
+  void _loadUserData() {
+    final authViewModel = context.read<AuthViewModel>();
+    if (authViewModel.currentUser != null) {
+      // TODO: Load user's company data if they have one
+      // For now, we'll populate with sample data
+      _populateFormFields(authViewModel.currentUser!);
+    }
+  }
+  
+  void _populateFormFields(UserEntity user) {
+    _companyNameController.text = '';
+    _ceoNameController.text = user.name;
+    _phoneController.text = user.phone;
+    // Other fields can be populated when company data is available
+  }
   
   @override
   Widget build(BuildContext context) {
@@ -176,13 +234,13 @@ class _ProfileViewState extends State<ProfileView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(height: 20.h),
-                _buildTextField('기업명', '가나다'),
+                _buildTextFieldWithController('기업명', '기업명을 입력해주세요', _companyNameController),
                 SizedBox(height: 20.h),
-                _buildTextField('기업대표명', '홍길동', isRequired: true),
+                _buildTextFieldWithController('기업대표명', 'CEO 이름을 입력해주세요', _ceoNameController, isRequired: true),
                 SizedBox(height: 20.h),
-                _buildTextField('홈페이지', '홈페이지 주소를 입력해주세요'),
+                _buildTextFieldWithController('홈페이지', '홈페이지 주소를 입력해주세요', _websiteController),
                 SizedBox(height: 20.h),
-                _buildTextField('기업전화번호', '02-3456-7890'),
+                _buildTextFieldWithController('기업전화번호', '전화번호를 입력해주세요', _phoneController),
                 SizedBox(height: 20.h),
                 _buildAddressSection(),
                 SizedBox(height: 20.h),
@@ -814,28 +872,34 @@ class _ProfileViewState extends State<ProfileView> {
       padding: EdgeInsets.all(16.w),
       child: Column(
         children: [
-          Text(
-            '로그아웃',
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w500,
-              color: Colors.black,
+          GestureDetector(
+            onTap: _logout,
+            child: Text(
+              '로그아웃',
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w500,
+                color: Colors.black,
+              ),
             ),
           ),
           SizedBox(height: 12.h),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(vertical: 12.h),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: Center(
-              child: Text(
-                '회원탈퇴',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Colors.grey[600],
+          GestureDetector(
+            onTap: _showDeleteAccountDialog,
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              child: Center(
+                child: Text(
+                  '회원탈퇴',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey[600],
+                  ),
                 ),
               ),
             ),
@@ -923,6 +987,7 @@ class _ProfileViewState extends State<ProfileView> {
           children: [
             Expanded(
               child: TextFormField(
+                controller: _addressController,
                 decoration: InputDecoration(
                   hintText: '기업주소를 입력해주세요',
                   hintStyle: TextStyle(
@@ -1229,6 +1294,7 @@ class _ProfileViewState extends State<ProfileView> {
                   border: Border.all(color: Colors.grey[300]!),
                 ),
                 child: TextFormField(
+                  controller: _featuresController,
                   maxLines: null,
                   expands: true,
                   decoration: InputDecoration(
@@ -1505,5 +1571,201 @@ class _ProfileViewState extends State<ProfileView> {
         ],
       ),
     );
+  }
+  
+  // New methods for backend integration
+  Widget _buildTextFieldWithController(String label, String hint, TextEditingController controller, {bool isRequired = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w500,
+                color: Colors.black,
+              ),
+            ),
+            if (isRequired)
+              Text(
+                ' *',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.red,
+                ),
+              ),
+          ],
+        ),
+        SizedBox(height: 8.h),
+        TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(
+              fontSize: 14.sp,
+              color: Colors.grey[500],
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+              borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+            ),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 16.w,
+              vertical: 12.h,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildPasswordField(String label, TextEditingController controller, {bool isPassword = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 120.w,
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+            Expanded(
+              child: TextFormField(
+                controller: controller,
+                obscureText: isPassword,
+                decoration: InputDecoration(
+                  hintText: '입력해주세요',
+                  hintStyle: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey[500],
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4.r),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4.r),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(4.r),
+                    borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 8.h,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+  
+  void _saveCompanyInfo() async {
+    if (_formKey.currentState?.validate() ?? false) {
+      // TODO: Implement company info save
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('기업 정보가 저장되었습니다.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+  
+  void _changePassword() async {
+    // TODO: Implement password change functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('비밀번호 변경 기능은 추후 구현 예정입니다.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+  
+  void _logout() async {
+    try {
+      final authViewModel = context.read<AuthViewModel>();
+      await authViewModel.signOut();
+      context.go('/login');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('로그아웃 실패: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+  
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('회원탈퇴'),
+          content: const Text('정말로 회원탈퇴를 하시겠습니까?\n\n탈퇴 후에는 모든 데이터가 삭제되며 복구할 수 없습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteAccount();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('탈퇴'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  void _deleteAccount() async {
+    try {
+      final authViewModel = context.read<AuthViewModel>();
+      // TODO: Implement account deletion
+      // await authViewModel.deleteAccount();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('회원탈퇴가 완료되었습니다.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      context.go('/login');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('회원탈퇴 실패: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../domain/entities/company_entity.dart';
+import '../../viewmodels/company_viewmodel.dart';
 
 class PremiumPostDetailView extends StatefulWidget {
   final String postId;
@@ -15,23 +19,56 @@ class PremiumPostDetailView extends StatefulWidget {
 }
 
 class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
+  CompanyEntity? company;
+  bool isLoading = true;
+  String? errorMessage;
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadCompanyData();
+  }
+  
+  void _loadCompanyData() async {
+    try {
+      final companyViewModel = context.read<CompanyViewModel>();
+      await companyViewModel.loadCompanyById(widget.postId);
+      
+      setState(() {
+        company = companyViewModel.selectedCompany;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = e.toString();
+        isLoading = false;
+      });
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildBreadcrumb(),
-            Expanded(
-              child: SingleChildScrollView(
-                child: _buildContent(),
-              ),
-            ),
-            _buildBottomButtons(),
-          ],
-        ),
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : errorMessage != null
+                ? _buildErrorState()
+                : company == null
+                    ? _buildNotFoundState()
+                    : Column(
+                        children: [
+                          _buildBreadcrumb(),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              child: _buildContent(),
+                            ),
+                          ),
+                          _buildBottomButtons(),
+                        ],
+                      ),
       ),
     );
   }
@@ -68,7 +105,7 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
       width: double.infinity,
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       child: Text(
-        '절삭가공 > 사출',
+'${company?.category ?? ''} > ${company?.subcategory ?? ''}',
         style: TextStyle(
           fontSize: 14.sp,
           fontWeight: FontWeight.w500,
@@ -110,20 +147,24 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
                   color: const Color(0xFF1E3A5F),
                   borderRadius: BorderRadius.circular(8.r),
                 ),
-                child: Center(
-                  child: Text(
-                    'J',
-                    style: TextStyle(
-                      fontSize: 24.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+                child: company?.logo != null && company!.logo!.isNotEmpty
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Image.network(
+                          company!.logo!,
+                          width: 48.w,
+                          height: 48.h,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildCompanyInitial();
+                          },
+                        ),
+                      )
+                    : _buildCompanyInitial(),
               ),
               SizedBox(width: 12.w),
               Text(
-                '김기업123',
+                company?.companyName ?? '로딩 중...',
                 style: TextStyle(
                   fontSize: 16.sp,
                   fontWeight: FontWeight.bold,
@@ -152,22 +193,17 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8.r),
-        child: Image.asset(
-          'assets/images/sample.png',
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Colors.grey[300],
-              child: Icon(
-                Icons.image,
-                size: 60.sp,
-                color: Colors.grey[500],
-              ),
-            );
-          },
-        ),
+        child: company?.photos.isNotEmpty == true
+            ? Image.network(
+                company!.photos.first,
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildPlaceholderImage();
+                },
+              )
+            : _buildPlaceholderImage(),
       ),
     );
   }
@@ -177,17 +213,29 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
       padding: EdgeInsets.all(16.w),
       child: Column(
         children: [
-          _buildDetailRow('장비명', '수직 머시닝 센터'),
+          _buildDetailRow('기업명', company?.companyName ?? ''),
           _buildDivider(),
-          _buildDetailRow('제조자', 'HARTFORD'),
+          _buildDetailRow('CEO', company?.ceoName ?? ''),
           _buildDivider(),
-          _buildDetailRow('모델명', 'PRW-426L'),
+          _buildDetailRow('카테고리', company?.category ?? ''),
           _buildDivider(),
-          _buildSizeSection(),
+          _buildDetailRow('서브카테고리', company?.subcategory ?? ''),
           _buildDivider(),
-          _buildDetailRow('테이블 사이즈', '2040 X 4200'),
+          _buildDetailRow('전화번호', company?.phone ?? ''),
           _buildDivider(),
-          _buildMaterialSection(),
+          _buildDetailRow('주소', company?.address ?? ''),
+          if (company?.detailAddress?.isNotEmpty == true) ...[
+            _buildDivider(),
+            _buildDetailRow('상세주소', company!.detailAddress!),
+          ],
+          if (company?.greeting?.isNotEmpty == true) ...[
+            _buildDivider(),
+            _buildDetailRow('인사말', company!.greeting!),
+          ],
+          if (company?.website?.isNotEmpty == true) ...[
+            _buildDivider(),
+            _buildDetailRow('웹사이트', company!.website!),
+          ],
         ],
       ),
     );
@@ -378,7 +426,7 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
         children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: () {},
+              onPressed: _makePhoneCall,
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFF1E3A5F)),
                 shape: RoundedRectangleBorder(
@@ -399,7 +447,7 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
           SizedBox(width: 12.w),
           Expanded(
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: _openWebsite,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1E3A5F),
                 shape: RoundedRectangleBorder(
@@ -420,5 +468,146 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
         ],
       ),
     );
+  }
+  
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64.sp,
+            color: Colors.red[400],
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            '오류가 발생했습니다',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[800],
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            errorMessage ?? '',
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 24.h),
+          ElevatedButton(
+            onPressed: _loadCompanyData,
+            child: const Text('다시 시도'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildNotFoundState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.business_outlined,
+            size: 64.sp,
+            color: Colors.grey[400],
+          ),
+          SizedBox(height: 16.h),
+          Text(
+            '기업을 찾을 수 없습니다',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[800],
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            '요청하신 기업 정보를 찾을 수 없습니다.',
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildCompanyInitial() {
+    return Center(
+      child: Text(
+        company?.companyName.isNotEmpty == true
+            ? company!.companyName[0].toUpperCase()
+            : 'C',
+        style: TextStyle(
+          fontSize: 24.sp,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPlaceholderImage() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: Colors.grey[300],
+      child: Icon(
+        Icons.image,
+        size: 60.sp,
+        color: Colors.grey[500],
+      ),
+    );
+  }
+  
+  void _makePhoneCall() async {
+    if (company?.phone != null && company!.phone.isNotEmpty) {
+      final Uri phoneUri = Uri(
+        scheme: 'tel',
+        path: company!.phone,
+      );
+      
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('전화를 걸 수 없습니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  void _openWebsite() async {
+    if (company?.website != null && company!.website!.isNotEmpty) {
+      String url = company!.website!;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://$url';
+      }
+      
+      final Uri websiteUri = Uri.parse(url);
+      
+      if (await canLaunchUrl(websiteUri)) {
+        await launchUrl(websiteUri, mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('웹사이트를 열 수 없습니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

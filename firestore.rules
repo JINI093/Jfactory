@@ -1,0 +1,150 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 사용자 컬렉션 - 본인만 읽기/쓰기 가능
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // 기업 컬렉션
+    match /companies/{companyId} {
+      // 모든 사용자가 읽기 가능 (공개 정보)
+      allow read: if true;
+      
+      // 인증된 사용자만 생성/수정 가능
+      allow create: if request.auth != null && 
+                   validateCompanyData(request.resource.data);
+      
+      // 기업 소유자만 수정 가능 (추후 확장)
+      allow update: if request.auth != null && 
+                   validateCompanyData(request.resource.data);
+      
+      // 관리자만 삭제 가능 (추후 확장)
+      allow delete: if false; // 현재는 삭제 불가
+    }
+    
+    // 결제 컬렉션
+    match /payments/{paymentId} {
+      // 결제 소유자와 관련 기업만 읽기 가능
+      allow read: if request.auth != null && 
+                 (request.auth.uid == resource.data.userId ||
+                  request.auth.uid == resource.data.companyOwnerId);
+      
+      // 인증된 사용자만 생성 가능
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId &&
+                   validatePaymentData(request.resource.data);
+      
+      // 결제 상태 업데이트만 허용 (시스템에서만)
+      allow update: if request.auth != null && 
+                   onlyStatusChanged(resource.data, request.resource.data);
+      
+      // 삭제 불가
+      allow delete: if false;
+    }
+    
+    // 문의 컬렉션
+    match /inquiries/{inquiryId} {
+      // 문의 작성자만 읽기 가능
+      allow read: if request.auth != null && 
+                 request.auth.uid == resource.data.userId;
+      
+      // 인증된 사용자만 생성 가능
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId &&
+                   validateInquiryData(request.resource.data);
+      
+      // 상태 업데이트만 허용 (관리자)
+      allow update: if request.auth != null && 
+                   onlyInquiryStatusChanged(resource.data, request.resource.data);
+      
+      // 삭제 불가
+      allow delete: if false;
+    }
+    
+    // 게시글 컬렉션
+    match /posts/{postId} {
+      // 모든 사용자가 읽기 가능
+      allow read: if true;
+      
+      // 인증된 사용자만 생성 가능
+      allow create: if request.auth != null && 
+                   validatePostData(request.resource.data);
+      
+      // 게시글 소유자만 수정 가능
+      allow update: if request.auth != null && 
+                   request.auth.uid == resource.data.authorId &&
+                   validatePostData(request.resource.data);
+      
+      // 게시글 소유자만 삭제 가능
+      allow delete: if request.auth != null && 
+                   request.auth.uid == resource.data.authorId;
+    }
+    
+    // 카테고리 컬렉션 - 읽기 전용
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if false; // 관리자만 수정 가능 (별도 처리)
+    }
+    
+    // 지역 컬렉션 - 읽기 전용
+    match /regions/{regionId} {
+      allow read: if true;
+      allow write: if false; // 관리자만 수정 가능 (별도 처리)
+    }
+    
+    // 유효성 검사 함수들
+    function validateCompanyData(data) {
+      return data.keys().hasAll(['companyName', 'ceoName', 'phone', 'address', 
+                                'category', 'subcategory', 'createdAt']) &&
+             data.companyName is string && data.companyName.size() >= 2 &&
+             data.ceoName is string && data.ceoName.size() >= 2 &&
+             data.phone is string && data.phone.size() >= 10 &&
+             data.address is string && data.address.size() >= 5 &&
+             data.category is string && data.category.size() >= 1 &&
+             data.subcategory is string && data.subcategory.size() >= 1 &&
+             data.adPayment is number && data.adPayment >= 0;
+    }
+    
+    function validatePaymentData(data) {
+      return data.keys().hasAll(['userId', 'companyId', 'amount', 'paymentMethod',
+                                'status', 'createdAt', 'adDurationDays']) &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.companyId is string && data.companyId.size() > 0 &&
+             data.amount is number && data.amount > 0 &&
+             data.paymentMethod is string &&
+             data.status in ['pending', 'completed', 'failed', 'cancelled'] &&
+             data.adDurationDays is number && data.adDurationDays > 0;
+    }
+    
+    function validateInquiryData(data) {
+      return data.keys().hasAll(['userId', 'title', 'content', 'type', 
+                                'status', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.title is string && data.title.size() >= 2 &&
+             data.content is string && data.content.size() >= 10 &&
+             data.type in ['general', 'technical', 'payment', 'complaint', 'other'] &&
+             data.status in ['pending', 'answered', 'closed'];
+    }
+    
+    function validatePostData(data) {
+      return data.keys().hasAll(['companyId', 'title', 'content', 'status', 
+                                'createdAt', 'viewCount']) &&
+             data.companyId is string && data.companyId.size() > 0 &&
+             data.title is string && data.title.size() >= 2 &&
+             data.content is string && data.content.size() >= 10 &&
+             data.status in ['draft', 'published', 'hidden', 'deleted'] &&
+             data.viewCount is number && data.viewCount >= 0;
+    }
+    
+    function onlyStatusChanged(oldData, newData) {
+      return oldData.diff(newData).affectedKeys().hasOnly(['status', 'completedAt', 'failureReason']);
+    }
+    
+    function onlyInquiryStatusChanged(oldData, newData) {
+      return oldData.diff(newData).affectedKeys().hasOnly(['status', 'answer', 'answeredAt', 'adminId']);
+    }
+  }
+}
