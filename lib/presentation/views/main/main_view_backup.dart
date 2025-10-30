@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../viewmodels/main_viewmodel.dart';
 import '../../../core/router/route_names.dart';
+import '../../../domain/entities/company_entity.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -15,22 +16,22 @@ class _MainViewState extends State<MainView> {
   @override
   void initState() {
     super.initState();
-    print('MainView: initState called');
+    debugPrint('MainView: initState called');
     // Load companies when the view is initialized
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      print('MainView: Post frame callback - loading companies');
+      debugPrint('MainView: Post frame callback - loading companies');
       try {
         context.read<MainViewModel>().loadCompanies();
-        print('MainView: loadCompanies called successfully');
+        debugPrint('MainView: loadCompanies called successfully');
       } catch (e) {
-        print('MainView: Error loading companies: $e');
+        debugPrint('MainView: Error loading companies: $e');
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    print('MainView: build method called');
+    debugPrint('MainView: build method called');
     // Build main view
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -114,12 +115,10 @@ class _MainViewState extends State<MainView> {
                     return CompanyCard(
                       company: company,
                       onTap: () {
-                        context.go(
-                          RouteNames.companyDetail.replaceFirst(':id', company['id']),
-                        );
+                        context.go('/company/${company.id}');
                       },
                       onFavoriteToggle: () {
-                        viewModel.toggleFavorite(company['id']);
+                        viewModel.toggleFavorite(company.id);
                       },
                     );
                   },
@@ -134,7 +133,7 @@ class _MainViewState extends State<MainView> {
 }
 
 class CompanyCard extends StatelessWidget {
-  final Map<String, dynamic> company;
+  final CompanyEntity company;
   final VoidCallback onTap;
   final VoidCallback onFavoriteToggle;
 
@@ -165,7 +164,7 @@ class CompanyCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      company['name'],
+                      company.companyName,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -173,9 +172,9 @@ class CompanyCard extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(
-                      company['isFavorite'] ? Icons.favorite : Icons.favorite_border,
-                      color: company['isFavorite'] ? Colors.red : null,
+                    icon: const Icon(
+                      Icons.favorite_border,
+                      color: Colors.grey,
                     ),
                     onPressed: onFavoriteToggle,
                   ),
@@ -187,43 +186,49 @@ class CompanyCard extends StatelessWidget {
                   Icon(Icons.category, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 4),
                   Text(
-                    company['category'],
+                    company.category,
                     style: TextStyle(color: Colors.grey[600]),
                   ),
                   const SizedBox(width: 16),
                   Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 4),
-                  Text(
-                    company['location'],
-                    style: TextStyle(color: Colors.grey[600]),
+                  Expanded(
+                    child: Text(
+                      company.address,
+                      style: TextStyle(color: Colors.grey[600]),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      company['equipment'],
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${company['manufacturer']} - ${company['model']}',
-                      style: TextStyle(
-                        color: Colors.grey[700],
-                        fontSize: 14,
+              if (company.greeting != null && company.greeting!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        company.subcategory,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        company.greeting!,
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontSize: 14,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
         ),

@@ -13,6 +13,24 @@ class PostModel {
   final List<String> tags;
   final bool isPremium;
   final DateTime? premiumExpiryDate;
+  
+  // Equipment/Post specific fields
+  final String? category;
+  final String? subcategory;
+  final String? subSubcategory;
+  final String? equipmentName;
+  final String? manufacturer;
+  final String? model;
+  final String? dimensionX;
+  final String? dimensionY;
+  final String? dimensionZ;
+  final String? weight;
+  final String? tableSize;
+  final String? features;
+  final String? quantity;
+  final String? industry;
+  final String? machiningCenter;
+  final String? basicSpecs;
 
   PostModel({
     required this.id,
@@ -27,6 +45,22 @@ class PostModel {
     required this.tags,
     required this.isPremium,
     this.premiumExpiryDate,
+    this.category,
+    this.subcategory,
+    this.subSubcategory,
+    this.equipmentName,
+    this.manufacturer,
+    this.model,
+    this.dimensionX,
+    this.dimensionY,
+    this.dimensionZ,
+    this.weight,
+    this.tableSize,
+    this.features,
+    this.quantity,
+    this.industry,
+    this.machiningCenter,
+    this.basicSpecs,
   });
 
   factory PostModel.fromJson(Map<String, dynamic> json) {
@@ -56,6 +90,22 @@ class PostModel {
               ? DateTime.parse(json['premiumExpiryDate'])
               : (json['premiumExpiryDate'] as dynamic).toDate())
           : null,
+      category: json['category'] as String?,
+      subcategory: json['subcategory'] as String?,
+      subSubcategory: json['subSubcategory'] as String?,
+      equipmentName: json['equipmentName'] as String?,
+      manufacturer: json['manufacturer'] as String?,
+      model: json['model'] as String?,
+      dimensionX: json['dimensionX'] as String?,
+      dimensionY: json['dimensionY'] as String?,
+      dimensionZ: json['dimensionZ'] as String?,
+      weight: json['weight'] as String?,
+      tableSize: json['tableSize'] as String?,
+      features: json['features'] as String?,
+      quantity: json['quantity'] as String?,
+      industry: json['industry'] as String?,
+      machiningCenter: json['machiningCenter'] as String?,
+      basicSpecs: json['basicSpecs'] as String?,
     );
   }
 
@@ -73,6 +123,22 @@ class PostModel {
       'tags': tags,
       'isPremium': isPremium,
       'premiumExpiryDate': premiumExpiryDate?.toIso8601String(),
+      'category': category,
+      'subcategory': subcategory,
+      'subSubcategory': subSubcategory,
+      'equipmentName': equipmentName,
+      'manufacturer': manufacturer,
+      'model': model,
+      'dimensionX': dimensionX,
+      'dimensionY': dimensionY,
+      'dimensionZ': dimensionZ,
+      'weight': weight,
+      'tableSize': tableSize,
+      'features': features,
+      'quantity': quantity,
+      'industry': industry,
+      'machiningCenter': machiningCenter,
+      'basicSpecs': basicSpecs,
     };
   }
 
@@ -90,6 +156,22 @@ class PostModel {
       tags: tags,
       isPremium: isPremium,
       premiumExpiryDate: premiumExpiryDate,
+      category: category,
+      subcategory: subcategory,
+      subSubcategory: subSubcategory,
+      equipmentName: equipmentName,
+      manufacturer: manufacturer,
+      model: model,
+      dimensionX: dimensionX,
+      dimensionY: dimensionY,
+      dimensionZ: dimensionZ,
+      weight: weight,
+      tableSize: tableSize,
+      features: features,
+      quantity: quantity,
+      industry: industry,
+      machiningCenter: machiningCenter,
+      basicSpecs: basicSpecs,
     );
   }
 
@@ -107,6 +189,22 @@ class PostModel {
       tags: entity.tags,
       isPremium: entity.isPremium,
       premiumExpiryDate: entity.premiumExpiryDate,
+      category: entity.category,
+      subcategory: entity.subcategory,
+      subSubcategory: entity.subSubcategory,
+      equipmentName: entity.equipmentName,
+      manufacturer: entity.manufacturer,
+      model: entity.model,
+      dimensionX: entity.dimensionX,
+      dimensionY: entity.dimensionY,
+      dimensionZ: entity.dimensionZ,
+      weight: entity.weight,
+      tableSize: entity.tableSize,
+      features: entity.features,
+      quantity: entity.quantity,
+      industry: entity.industry,
+      machiningCenter: entity.machiningCenter,
+      basicSpecs: entity.basicSpecs,
     );
   }
 
@@ -123,6 +221,22 @@ class PostModel {
     List<String>? tags,
     bool? isPremium,
     DateTime? premiumExpiryDate,
+    String? category,
+    String? subcategory,
+    String? subSubcategory,
+    String? equipmentName,
+    String? manufacturer,
+    String? model,
+    String? dimensionX,
+    String? dimensionY,
+    String? dimensionZ,
+    String? weight,
+    String? tableSize,
+    String? features,
+    String? quantity,
+    String? industry,
+    String? machiningCenter,
+    String? basicSpecs,
   }) {
     return PostModel(
       id: id ?? this.id,
@@ -137,6 +251,22 @@ class PostModel {
       tags: tags ?? this.tags,
       isPremium: isPremium ?? this.isPremium,
       premiumExpiryDate: premiumExpiryDate ?? this.premiumExpiryDate,
+      category: category ?? this.category,
+      subcategory: subcategory ?? this.subcategory,
+      subSubcategory: subSubcategory ?? this.subSubcategory,
+      equipmentName: equipmentName ?? this.equipmentName,
+      manufacturer: manufacturer ?? this.manufacturer,
+      model: model ?? this.model,
+      dimensionX: dimensionX ?? this.dimensionX,
+      dimensionY: dimensionY ?? this.dimensionY,
+      dimensionZ: dimensionZ ?? this.dimensionZ,
+      weight: weight ?? this.weight,
+      tableSize: tableSize ?? this.tableSize,
+      features: features ?? this.features,
+      quantity: quantity ?? this.quantity,
+      industry: industry ?? this.industry,
+      machiningCenter: machiningCenter ?? this.machiningCenter,
+      basicSpecs: basicSpecs ?? this.basicSpecs,
     );
   }
 }

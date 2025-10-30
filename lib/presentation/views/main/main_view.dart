@@ -8,6 +8,11 @@ import '../../../core/router/route_names.dart';
 import '../../../data/models/category_model.dart';
 import '../filter/location_filter_bottom_sheet.dart';
 import '../filter/category_filter_bottom_sheet.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../domain/entities/company_entity.dart';
+import '../../widgets/naver_map_widget.dart';
+import '../../widgets/admob_banner_widget.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -17,7 +22,6 @@ class MainView extends StatefulWidget {
 }
 
 class _MainViewState extends State<MainView> {
-  int _currentCategoryPage = 0;
 
   @override
   void initState() {
@@ -27,11 +31,67 @@ class _MainViewState extends State<MainView> {
       if (mounted) {
         try {
           context.read<MainViewModel>().loadCompanies();
+          _checkCompanyRegistration();
         } catch (e) {
           // Handle error silently for now
         }
       }
     });
+  }
+
+  Future<void> _checkCompanyRegistration() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      // Get user data from Firestore to check user type
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      if (!userDoc.exists) return;
+
+      final userData = userDoc.data()!;
+      final userType = userData['userType'] as String?;
+
+      // If user is company type, check if company registration exists
+      if (userType == 'company') {
+        final companyDoc = await FirebaseFirestore.instance
+            .collection('companies')
+            .doc(currentUser.uid)
+            .get();
+
+        // If company registration doesn't exist, redirect to registration page
+        if (!companyDoc.exists && mounted) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              context.go(RouteNames.companyRegistration);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      // Handle error silently
+      debugPrint('Error checking company registration: $e');
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그아웃되었습니다.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('로그아웃 중 오류가 발생했습니다: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   @override
@@ -75,17 +135,79 @@ class _MainViewState extends State<MainView> {
         },
       ),
       actions: [
-        TextButton(
-          onPressed: () {
-            context.go(RouteNames.login);
+        StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            final isLoggedIn = snapshot.data != null;
+            
+            if (isLoggedIn) {
+              return PopupMenuButton<String>(
+                icon: Icon(
+                  Icons.person_outline,
+                  color: Colors.grey[600],
+                  size: 24.sp,
+                ),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'profile':
+                      context.go(RouteNames.profile);
+                      break;
+                    case 'admin':
+                      context.go(RouteNames.adminMain);
+                      break;
+                    case 'logout':
+                      _handleLogout();
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person, size: 18.sp),
+                        SizedBox(width: 8.w),
+                        const Text('마이페이지'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'admin',
+                    child: Row(
+                      children: [
+                        Icon(Icons.admin_panel_settings, size: 18.sp),
+                        SizedBox(width: 8.w),
+                        const Text('관리자 페이지'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<String>(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, size: 18.sp),
+                        SizedBox(width: 8.w),
+                        const Text('로그아웃'),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            } else {
+              return TextButton(
+                onPressed: () {
+                  context.go(RouteNames.login);
+                },
+                child: Text(
+                  '로그인',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              );
+            }
           },
-          child: Text(
-            '로그인',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.grey[600],
-            ),
-          ),
         ),
       ],
       systemOverlayStyle: const SystemUiOverlayStyle(
@@ -98,101 +220,35 @@ class _MainViewState extends State<MainView> {
   Widget _buildAdSenseBanner() {
     return Container(
       margin: EdgeInsets.all(16.w),
-      height: 100.h,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE3F2FD),
-        borderRadius: BorderRadius.circular(8.r),
-      ),
-      child: Row(
-        children: [
-          SizedBox(width: 20.w),
-          Container(
-            width: 24.w,
-            height: 24.h,
-            decoration: BoxDecoration(
-              color: const Color(0xFF4285F4),
-              borderRadius: BorderRadius.circular(4.r),
-            ),
-            child: Icon(
-              Icons.g_mobiledata,
-              color: Colors.white,
-              size: 16.sp,
-            ),
-          ),
-          SizedBox(width: 8.w),
-          Text(
-            'Google AdSense',
-            style: TextStyle(
-              fontSize: 18.sp,
-              fontWeight: FontWeight.w500,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
-      ),
+      child: const AdmobBannerWidget(),
     );
   }
 
   Widget _buildCategoryButtons() {
-    final paginatedCategories = CategoryData.paginatedCategories;
-    final currentPageCategories = paginatedCategories.isNotEmpty 
-        ? paginatedCategories[_currentCategoryPage] 
-        : <CategoryModel>[];
-
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              IconButton(
-                onPressed: _currentCategoryPage > 0 ? () {
-                  setState(() {
-                    _currentCategoryPage--;
-                  });
-                } : null,
-                icon: Icon(
-                  Icons.arrow_back_ios, 
-                  size: 20.sp, 
-                  color: _currentCategoryPage > 0 ? Colors.grey : Colors.grey[300],
-                ),
-              ),
-              Expanded(
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    childAspectRatio: 1.0,
-                    crossAxisSpacing: 8.w,
-                    mainAxisSpacing: 8.h,
-                  ),
-                  itemCount: currentPageCategories.length,
-                  itemBuilder: (context, index) {
-                    return _buildCategoryButton(currentPageCategories[index]);
-                  },
-                ),
-              ),
-              IconButton(
-                onPressed: _currentCategoryPage < paginatedCategories.length - 1 ? () {
-                  setState(() {
-                    _currentCategoryPage++;
-                  });
-                } : null,
-                icon: Icon(
-                  Icons.arrow_forward_ios, 
-                  size: 20.sp, 
-                  color: _currentCategoryPage < paginatedCategories.length - 1 ? Colors.grey : Colors.grey[300],
-                ),
-              ),
-            ],
-          ),
-        ],
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          childAspectRatio: 1.0,
+          crossAxisSpacing: 8.w,
+          mainAxisSpacing: 8.h,
+        ),
+        itemCount: CategoryData.categories.length,
+        itemBuilder: (context, index) {
+          return _buildCategoryButton(CategoryData.categories[index]);
+        },
       ),
     );
   }
 
   Widget _buildCategoryButton(CategoryModel category) {
+    // Vision + Robot 카테고리는 작은 폰트 사용
+    final isVisionRobotCategory = category.title.contains('Vision') && category.title.contains('Robot');
+    final fontSize = isVisionRobotCategory ? 10.sp : 14.sp;
+    
     return Container(
       width: 64.w,
       height: 64.h,
@@ -206,23 +262,28 @@ class _MainViewState extends State<MainView> {
           borderRadius: BorderRadius.circular(10.r),
           onTap: () {
             try {
-              final encodedTitle = Uri.encodeQueryComponent(category.title);
-              context.go(RouteNames.categoryDetail.replaceFirst(':categoryTitle', encodedTitle));
+              // Encode the title properly for URL
+              final encodedTitle = Uri.encodeComponent(category.title);
+              final route = '/category/$encodedTitle';
+              print('Navigating to: $route');
+              context.go(route);
             } catch (e) {
-              // Fallback: use title as-is if encoding fails
-              context.go(RouteNames.categoryDetail.replaceFirst(':categoryTitle', category.title));
+              print('Navigation error: $e');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('카테고리로 이동할 수 없습니다: ${e.toString()}')),
+              );
             }
           },
           child: Center(
             child: Text(
               category.title,
               style: TextStyle(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
+                fontSize: fontSize,
+                fontWeight: FontWeight.bold,
                 color: Colors.black87,
               ),
               textAlign: TextAlign.center,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -300,47 +361,16 @@ class _MainViewState extends State<MainView> {
             ],
           ),
           SizedBox(height: 16.h),
-          Container(
-            height: 200.h,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: Image.asset(
-                'assets/images/map_placeholder.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Colors.blue[100],
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.map,
-                            size: 48.sp,
-                            color: Colors.blue[400],
-                          ),
-                          SizedBox(height: 8.h),
-                          Text(
-                            '지도',
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              color: Colors.blue[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
+          Consumer<MainViewModel>(
+            builder: (context, mainViewModel, child) {
+              return NaverMapWidget(
+                companies: mainViewModel.companies,
+                onCompanyTapped: (company) {
+                  // 회사 상세 페이지로 이동
+                  context.push('/company/${company.id}');
                 },
-              ),
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -349,9 +379,40 @@ class _MainViewState extends State<MainView> {
 
   Widget _buildLocationDropdown(String text) {
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         if (text == '지역') {
-          showLocationFilterBottomSheet(context);
+          final viewModel = context.read<MainViewModel>();
+          final result = await showLocationFilterBottomSheet(
+            context, 
+            selectedLocations: viewModel.selectedLocations,
+          );
+          
+          if (result != null && mounted) {
+            viewModel.updateLocationFilter(result);
+            
+            if (result.isNotEmpty) {
+              final locationNames = result
+                  .where((loc) => loc['district'] != '전체' && loc['district'] != '전지역')
+                  .map((loc) => '${loc['region']} > ${loc['district']}')
+                  .join(', ');
+              
+              if (locationNames.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('선택된 지역: $locationNames'),
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('모든 지역 필터가 해제되었습니다'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          }
         } else if (text == '카테고리') {
           showCategoryFilterBottomSheet(context);
         } else {
@@ -410,42 +471,119 @@ class _MainViewState extends State<MainView> {
                   color: Colors.black,
                 ),
               ),
-              Text(
-                '1/9',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Colors.grey[600],
-                ),
-              ),
             ],
           ),
           SizedBox(height: 16.h),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 12.w,
-              mainAxisSpacing: 12.h,
-            ),
-            itemCount: 4,
-            itemBuilder: (context, index) {
-              return GestureDetector(
-                onTap: () {
-                  context.push('/company-page/${index + 1}');
+          Consumer<MainViewModel>(
+            builder: (context, viewModel, child) {
+              if (viewModel.isLoading) {
+                return Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40.h),
+                    child: const CircularProgressIndicator(),
+                  ),
+                );
+              }
+
+              // 오류가 발생했거나 데이터가 없는 경우
+              if (viewModel.error != null || viewModel.companies.isEmpty) {
+                return Container(
+                  margin: EdgeInsets.symmetric(vertical: 20.h),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.business_outlined,
+                          size: 48.sp,
+                          color: Colors.grey[400],
+                        ),
+                        SizedBox(height: 12.h),
+                        Text(
+                          '해당 기업이 없습니다.',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              // 프리미엄 기업만 필터링 (adPayment > 0인 기업들만 노출)
+              final premiumCompanies = viewModel.companies
+                  .where((company) => company.adPayment > 0)
+                  .take(6)
+                  .toList();
+              
+              debugPrint('🔥 Total companies loaded: ${viewModel.companies.length}');
+              debugPrint('🔥 Premium companies found: ${premiumCompanies.length}');
+
+              // 프리미엄 기업이 없으면 더미/일반 기업을 보여주지 않음
+              if (premiumCompanies.isEmpty) {
+                return Container(
+                  margin: EdgeInsets.symmetric(vertical: 20.h),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.business_outlined,
+                          size: 48.sp,
+                          color: Colors.grey[400],
+                        ),
+                        SizedBox(height: 12.h),
+                        Text(
+                          '프리미엄 기업이 없습니다.',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(height: 6.h),
+                        Text(
+                          '기업광고를 구매하면 메인에 노출됩니다.',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 12.w,
+                  mainAxisSpacing: 12.h,
+                ),
+                itemCount: premiumCompanies.length,
+                itemBuilder: (context, index) {
+                  final company = premiumCompanies[index];
+                  return GestureDetector(
+                    onTap: () {
+                      context.push('/company-page/${company.id}');
+                    },
+                    child: _buildCompanyCard(company, isPremium: true),
+                  );
                 },
-                child: _buildCompanyCard(),
               );
             },
           ),
-          SizedBox(height: 20.h),
         ],
       ),
     );
   }
 
-  Widget _buildCompanyCard() {
+  Widget _buildCompanyCard(CompanyEntity company, {bool isPremium = false}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -473,22 +611,7 @@ class _MainViewState extends State<MainView> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
-                  child: Image.asset(
-                    'assets/images/sample.png',
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: double.infinity,
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.business,
-                          size: 40.sp,
-                          color: Colors.grey[500],
-                        ),
-                      );
-                    },
-                  ),
+                  child: _buildCompanyImage(company),
                 ),
               ),
               Positioned(
@@ -521,7 +644,7 @@ class _MainViewState extends State<MainView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '기업명 및 로고',
+                        company.companyName,
                         style: TextStyle(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w600,
@@ -532,7 +655,7 @@ class _MainViewState extends State<MainView> {
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        '기업명 및 로고',
+                        _buildCategoryLine(company),
                         style: TextStyle(
                           fontSize: 12.sp,
                           color: Colors.grey[600],
@@ -543,7 +666,7 @@ class _MainViewState extends State<MainView> {
                     ],
                   ),
                   Text(
-                    '카테고리 설명',
+                    company.address,
                     style: TextStyle(
                       fontSize: 11.sp,
                       color: Colors.grey[500],
@@ -558,6 +681,47 @@ class _MainViewState extends State<MainView> {
         ],
       ),
     );
+  }
+
+  Widget _buildCompanyImage(CompanyEntity company) {
+    final String? imageUrl = (company.photos.isNotEmpty)
+        ? company.photos.first
+        : (company.logo != null && company.logo!.isNotEmpty ? company.logo : null);
+    if (imageUrl == null) {
+      return Container(
+        width: double.infinity,
+        color: Colors.grey[300],
+        child: Icon(
+          Icons.business,
+          size: 40.sp,
+          color: Colors.grey[500],
+        ),
+      );
+    }
+    return Image.network(
+      imageUrl,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          width: double.infinity,
+          color: Colors.grey[300],
+          child: Icon(
+            Icons.business,
+            size: 40.sp,
+            color: Colors.grey[500],
+          ),
+        );
+      },
+    );
+  }
+
+  String _buildCategoryLine(CompanyEntity company) {
+    final parts = <String>[];
+    if (company.category.isNotEmpty) parts.add(company.category);
+    if (company.subcategory.isNotEmpty) parts.add(company.subcategory);
+    if ((company.subSubcategory ?? '').isNotEmpty) parts.add(company.subSubcategory!);
+    return parts.join(' > ');
   }
 
   Widget _buildBottomNavigationBar() {
@@ -577,7 +741,14 @@ class _MainViewState extends State<MainView> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildBottomNavItem(Icons.refresh, '되돌가기', false),
+          GestureDetector(
+            onTap: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: _buildBottomNavItem(Icons.arrow_back_ios, '뒤로가기', false),
+          ),
           _buildBottomNavItem(Icons.home, '홈', true),
           GestureDetector(
             onTap: () {

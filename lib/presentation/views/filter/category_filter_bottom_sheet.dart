@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/category_model.dart';
+import '../../viewmodels/main_viewmodel.dart';
 
 class CategoryFilterBottomSheet extends StatefulWidget {
   const CategoryFilterBottomSheet({super.key});
@@ -39,13 +41,19 @@ class _CategoryFilterBottomSheetState extends State<CategoryFilterBottomSheet> {
     });
   }
 
-  int get _resultCount {
-    // Mock result count based on selection
-    if (selectedMainCategory == null) return 31894;
-    if (selectedSubCategory == null || selectedSubCategory == '전체' || selectedSubCategory == '전체 하위카테고리') {
-      return 31894;
-    }
-    return 31894; // This would be calculated based on actual filters
+  int _getResultCount(MainViewModel mainViewModel) {
+    final subcategoryToUse = selectedSubCategory == '전체' || 
+                             selectedSubCategory == '전체 하위카테고리' 
+                             ? null 
+                             : selectedSubCategory;
+    
+    return mainViewModel.getFilteredCount(
+      category: selectedMainCategory,
+      subcategory: subcategoryToUse,
+      locations: mainViewModel.selectedLocations.isNotEmpty 
+          ? mainViewModel.selectedLocations 
+          : null,
+    );
   }
 
   @override
@@ -274,25 +282,30 @@ class _CategoryFilterBottomSheetState extends State<CategoryFilterBottomSheet> {
               SizedBox(width: 12.w),
               Expanded(
                 flex: 5,
-                child: GestureDetector(
-                  onTap: _applyFilters,
-                  child: Container(
-                    height: 48.h,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E3A5F),
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${_resultCount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},')}개 결과보기',
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                child: Consumer<MainViewModel>(
+                  builder: (context, mainViewModel, child) {
+                    final resultCount = _getResultCount(mainViewModel);
+                    return GestureDetector(
+                      onTap: _applyFilters,
+                      child: Container(
+                        height: 48.h,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E3A5F),
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${resultCount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},')}개 결과보기',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -312,11 +325,24 @@ void showCategoryFilterBottomSheet(BuildContext context) {
     builder: (context) => const CategoryFilterBottomSheet(),
   ).then((result) {
     if (result != null) {
-      // Handle the filter result
-      print('Selected category filters: $result');
+      final mainViewModel = context.read<MainViewModel>();
+      final mainCategory = result['mainCategory'] as String?;
+      final subCategory = result['subCategory'] as String?;
+      
+      // MainViewModel에 카테고리 필터 적용
+      mainViewModel.updateCategoryFilter(mainCategory, subCategory);
+      
+      debugPrint('Selected category filters: $result');
+      
+      final categoryText = mainCategory != null 
+          ? (subCategory != null && subCategory != '전체' && subCategory != '전체 하위카테고리'
+              ? '$mainCategory > $subCategory'
+              : mainCategory)
+          : '전체';
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('카테고리 필터 적용: ${result['mainCategory']} > ${result['subCategory']}'),
+          content: Text('카테고리 필터 적용: $categoryText'),
           duration: const Duration(seconds: 2),
         ),
       );

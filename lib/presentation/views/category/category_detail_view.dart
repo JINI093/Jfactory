@@ -21,12 +21,19 @@ class CategoryDetailView extends StatefulWidget {
 class _CategoryDetailViewState extends State<CategoryDetailView> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedSubcategory;
+  String? _selectedSubSubcategory;
 
   @override
   void initState() {
     super.initState();
+    print('🔥 CategoryDetailView initState - categoryTitle: ${widget.categoryTitle}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCompanies();
+      try {
+        _loadCompanies();
+      } catch (e, stackTrace) {
+        print('🔥 Error in initState postFrameCallback: $e');
+        print('🔥 Stack trace: $stackTrace');
+      }
     });
   }
 
@@ -37,78 +44,181 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   void _loadCompanies() {
-    final companyViewModel = context.read<CompanyViewModel>();
-    companyViewModel.loadCompaniesByCategory(
-      widget.categoryTitle,
-      subcategory: _selectedSubcategory,
-    );
+    try {
+      print('🔥 _loadCompanies called - categoryTitle: ${widget.categoryTitle}');
+      final companyViewModel = context.read<CompanyViewModel>();
+      print('🔥 CompanyViewModel found: ${companyViewModel != null}');
+      
+      companyViewModel.loadCompaniesByCategory(
+        widget.categoryTitle,
+        subcategory: _selectedSubcategory,
+      );
+      print('🔥 loadCompaniesByCategory called successfully');
+    } catch (e, stackTrace) {
+      print('🔥 Error in _loadCompanies: $e');
+      print('🔥 Stack trace: $stackTrace');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('데이터 로딩 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
   }
 
   CategoryModel? get _currentCategory {
-    print('Original categoryTitle: ${widget.categoryTitle}');
+    // First, try to decode the title
+    String decodedTitle = widget.categoryTitle;
+    print('🔥 _currentCategory - original title: ${widget.categoryTitle}');
     
     try {
-      // Try different decoding methods
-      String decodedTitle = Uri.decodeQueryComponent(widget.categoryTitle);
-      print('Decoded with decodeQueryComponent: $decodedTitle');
-      CategoryModel? result = CategoryData.getCategoryByTitle(decodedTitle);
-      if (result != null) return result;
+      // Try to decode if it's encoded
+      if (widget.categoryTitle.contains('%')) {
+        decodedTitle = Uri.decodeComponent(widget.categoryTitle);
+        print('🔥 _currentCategory - decoded title: $decodedTitle');
+      }
     } catch (e) {
-      print('decodeQueryComponent failed: $e');
+      print('🔥 _currentCategory - decoding failed: $e');
+      // If decoding fails, use the original title
+      decodedTitle = widget.categoryTitle;
     }
     
-    try {
-      // Fallback to decodeComponent
-      String decodedTitle = Uri.decodeComponent(widget.categoryTitle);
-      print('Decoded with decodeComponent: $decodedTitle');
-      CategoryModel? result = CategoryData.getCategoryByTitle(decodedTitle);
-      if (result != null) return result;
-    } catch (e) {
-      print('decodeComponent failed: $e');
+    final category = CategoryData.getCategoryByTitle(decodedTitle);
+    print('🔥 _currentCategory - found category: ${category?.title}');
+    if (category == null) {
+      print('🔥 _currentCategory - Available categories:');
+      for (var cat in CategoryData.categories) {
+        print('🔥   - ${cat.title}');
+      }
     }
     
-    // If all decoding fails, try using the title as-is
-    print('Using title as-is: ${widget.categoryTitle}');
-    return CategoryData.getCategoryByTitle(widget.categoryTitle);
+    return category;
   }
 
   @override
   Widget build(BuildContext context) {
-    final category = _currentCategory;
+    print('🔥 CategoryDetailView build called');
     
-    if (category == null) {
+    try {
+      final category = _currentCategory;
+      print('🔥 CategoryDetailView build - category: ${category?.title}');
+      
+      if (category == null) {
+        print('🔥 CategoryDetailView build - category is null, showing error page');
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: _buildAppBar(),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '카테고리를 찾을 수 없습니다.',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                Text(
+                  '전달받은 카테고리: ${widget.categoryTitle}',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.grey[500],
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                ElevatedButton(
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/main');
+                    }
+                  },
+                  child: const Text('메인으로 돌아가기'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      print('🔥 CategoryDetailView build - rendering main content');
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: _buildAppBar(),
+        body: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildBreadcrumb(),
+              _buildSearchBar(),
+              _buildSubcategoriesGrid(category),
+              _buildPremiumSection(),
+              _buildGeneralPostsSection(),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomNavigationBar(),
+      );
+    } catch (e, stackTrace) {
+      print('🔥 Error in CategoryDetailView build: $e');
+      print('🔥 Stack trace: $stackTrace');
+      
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('오류'),
+          backgroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/main');
+              }
+            },
+          ),
+        ),
         body: Center(
-          child: Text(
-            '카테고리를 찾을 수 없습니다.',
-            style: TextStyle(
-              fontSize: 16.sp,
-              color: Colors.grey[600],
-            ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '페이지를 표시하는 중 오류가 발생했습니다.',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '오류: $e',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/main');
+                  }
+                },
+                child: const Text('메인으로 돌아가기'),
+              ),
+            ],
           ),
         ),
       );
     }
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildBreadcrumb(),
-            _buildSearchBar(),
-            _buildSubcategoriesGrid(category),
-            _buildPremiumSection(),
-            _buildGeneralPostsSection(),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
-    );
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -150,8 +260,8 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
       child: Text(
         '${widget.categoryTitle} >',
         style: TextStyle(
-          fontSize: 14.sp,
-          fontWeight: FontWeight.w500,
+          fontSize: 18.sp,
+          fontWeight: FontWeight.bold,
           color: Colors.black87,
         ),
       ),
@@ -224,9 +334,11 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
 
   Widget _buildSubcategoryCard(String subcategory) {
     final isSelected = _selectedSubcategory == subcategory;
+    // 가공1, 가공2는 작은 폰트 사용
+    final isProcessingCategory = subcategory.startsWith('가공1') || subcategory.startsWith('가공2');
+    final fontSize = isProcessingCategory ? 9.sp : 13.sp;
+    
     return Container(
-      width: 64.w,
-      height: 64.h,
       decoration: BoxDecoration(
         color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFFC6D6E8),
         borderRadius: BorderRadius.circular(10.r),
@@ -236,26 +348,124 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
         child: InkWell(
           borderRadius: BorderRadius.circular(10.r),
           onTap: () {
+            // 3단계 카테고리가 있는 경우 별도 페이지로 이동
+            if (CategoryData.hasSubSubcategories(widget.categoryTitle, subcategory)) {
+              context.push('/category/${Uri.encodeComponent(widget.categoryTitle)}/subcategory/${Uri.encodeComponent(subcategory)}');
+            } else {
+              // 3단계 카테고리가 없는 경우 기존 방식으로 처리
+              setState(() {
+                _selectedSubcategory = _selectedSubcategory == subcategory ? null : subcategory;
+                _selectedSubSubcategory = null;
+              });
+              final companyViewModel = context.read<CompanyViewModel>();
+              companyViewModel.loadCompaniesByCategory(
+                widget.categoryTitle,
+                subcategory: _selectedSubcategory,
+              );
+            }
+          },
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(4.w),
+              child: Text(
+                subcategory,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : Colors.black87,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubSubcategoriesGrid(CategoryModel category) {
+    print('🔥 _buildSubSubcategoriesGrid called with subcategory: ${_selectedSubcategory}');
+    final subSubcategories = CategoryData.getSubSubcategories(widget.categoryTitle, _selectedSubcategory!);
+    print('🔥 Retrieved subSubcategories: $subSubcategories');
+    if (subSubcategories == null || subSubcategories.isEmpty) {
+      print('🔥 No subSubcategories found, returning empty widget');
+      return const SizedBox.shrink();
+    }
+    
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '세부 카테고리',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              childAspectRatio: 1.0,
+              crossAxisSpacing: 8.w,
+              mainAxisSpacing: 8.h,
+            ),
+            itemCount: subSubcategories.length,
+            itemBuilder: (context, index) {
+              return _buildSubSubcategoryCard(subSubcategories[index]);
+            },
+          ),
+          SizedBox(height: 20.h),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubSubcategoryCard(String subSubcategory) {
+    final isSelected = _selectedSubSubcategory == subSubcategory;
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFFE8F4FD),
+        borderRadius: BorderRadius.circular(10.r),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10.r),
+          onTap: () {
             setState(() {
-              _selectedSubcategory = _selectedSubcategory == subcategory ? null : subcategory;
+              _selectedSubSubcategory = _selectedSubSubcategory == subSubcategory ? null : subSubcategory;
             });
             final companyViewModel = context.read<CompanyViewModel>();
             companyViewModel.loadCompaniesByCategory(
               widget.categoryTitle,
               subcategory: _selectedSubcategory,
+              subSubcategory: _selectedSubSubcategory,
             );
           },
           child: Center(
-            child: Text(
-              subcategory,
-              style: TextStyle(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? Colors.white : Colors.black87,
+            child: Padding(
+              padding: EdgeInsets.all(4.w),
+              child: Text(
+                subSubcategory,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : Colors.black87,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
               ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
@@ -475,6 +685,33 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
           return const SizedBox.shrink();
         }
 
+        // 오류가 발생한 경우
+        if (viewModel.errorMessage != null && viewModel.errorMessage!.isNotEmpty) {
+          return Container(
+            margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 40.h),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64.sp,
+                    color: Colors.red[300],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '해당 기업이 없습니다.',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
         final generalCompanies = viewModel.generalCompanies;
         if (generalCompanies.isEmpty && viewModel.premiumCompanies.isEmpty) {
           return Container(
@@ -489,7 +726,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                   ),
                   SizedBox(height: 16.h),
                   Text(
-                    '해당 카테고리에 등록된 기업이 없습니다.',
+                    '해당 기업이 없습니다.',
                     style: TextStyle(
                       fontSize: 16.sp,
                       color: Colors.grey[600],
@@ -661,25 +898,17 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
         child: Column(
           children: [
             Icon(
-              Icons.error_outline,
+              Icons.business_outlined,
               size: 64.sp,
-              color: Colors.red[400],
+              color: Colors.grey[400],
             ),
             SizedBox(height: 16.h),
             Text(
-              '오류가 발생했습니다',
+              '해당 기업이 없습니다.',
               style: TextStyle(
                 fontSize: 16.sp,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              error,
-              style: TextStyle(
-                fontSize: 14.sp,
                 color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
               ),
               textAlign: TextAlign.center,
             ),
@@ -746,24 +975,41 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   Widget _buildBottomNavItem(IconData icon, String label, bool isSelected) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          icon,
-          size: 24.sp,
-          color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey[400],
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10.sp,
+    return GestureDetector(
+      onTap: () {
+        if (label == '홈') {
+          context.go('/main');
+        } else if (label == '좋아요') {
+          context.go('/favorites');
+        } else if (label == '마이페이지') {
+          context.go('/profile');
+        } else if (label == '되돌가기') {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/main');
+          }
+        }
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 24.sp,
             color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey[400],
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
-        ),
-      ],
+          SizedBox(height: 4.h),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.sp,
+              color: isSelected ? const Color(0xFF1E3A5F) : Colors.grey[400],
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

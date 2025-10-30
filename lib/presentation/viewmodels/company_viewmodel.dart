@@ -32,6 +32,7 @@ class CompanyViewModel extends ChangeNotifier {
   // Filters
   String? _selectedCategory;
   String? _selectedSubcategory;
+  String? _selectedSubSubcategory;
   String? _selectedRegion;
   String _searchQuery = '';
   
@@ -45,36 +46,49 @@ class CompanyViewModel extends ChangeNotifier {
   
   String? get selectedCategory => _selectedCategory;
   String? get selectedSubcategory => _selectedSubcategory;
+  String? get selectedSubSubcategory => _selectedSubSubcategory;
   String? get selectedRegion => _selectedRegion;
   String get searchQuery => _searchQuery;
 
   // Load companies by category
-  Future<void> loadCompaniesByCategory(String category, {String? subcategory}) async {
+  Future<void> loadCompaniesByCategory(String category, {String? subcategory, String? subSubcategory}) async {
     _loadingState = CompanyLoadingState.loading;
     _errorMessage = null;
     _selectedCategory = category;
     _selectedSubcategory = subcategory;
+    _selectedSubSubcategory = subSubcategory;
     notifyListeners();
 
     try {
+      // limit을 크게 설정하여 클라이언트에서 필터링할 수 있도록 충분히 가져옴
       final allCompanies = await _getCompaniesUseCase(GetCompaniesParams(
         category: category,
         subcategory: subcategory,
-        limit: 50,
+        limit: 200, // 충분히 많이 가져옴
         orderBy: 'adPayment',
         descending: true,
       ));
 
       _companies = allCompanies;
+      debugPrint('🔥 CompanyViewModel: Loaded ${_companies.length} companies');
+      debugPrint('🔥 선택된 카테고리: category="$category", subcategory="$subcategory", subSubcategory="$subSubcategory"');
       
-      // 프리미엄 기업들 (광고비가 높은 상위 기업들)
-      _premiumCompanies = allCompanies
+      // 필터링된 기업들 (카테고리 필터 적용)
+      _applyFilters();
+      debugPrint('🔥 CompanyViewModel: Filtered companies: ${_filteredCompanies.length}');
+      
+      // 필터링 후 limit 적용 (최대 50개)
+      if (_filteredCompanies.length > 50) {
+        _filteredCompanies = _filteredCompanies.take(50).toList();
+      }
+      
+      // 프리미엄 기업들 (필터링된 기업 중 광고비가 높은 상위 기업들)
+      _premiumCompanies = _filteredCompanies
           .where((company) => company.adPayment > 0)
           .take(9)
           .toList();
       
-      // 필터링된 기업들
-      _applyFilters();
+      debugPrint('🔥 CompanyViewModel: Premium companies: ${_premiumCompanies.length}');
       
       _loadingState = CompanyLoadingState.success;
     } catch (e) {
@@ -112,6 +126,56 @@ class CompanyViewModel extends ChangeNotifier {
   // Apply filters to companies
   void _applyFilters() {
     _filteredCompanies = _companies.where((company) {
+      // 카테고리 필터링
+      if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
+        final companyCategory = company.category.trim();
+        final selectedCategory = _selectedCategory!.trim();
+        
+        // 정규화 함수: 줄바꿈을 공백으로, 연속 공백 정리, 소문자 변환
+        String normalize(String text) {
+          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+        }
+        
+        final normalizedCompany = normalize(companyCategory);
+        final normalizedSelected = normalize(selectedCategory);
+        
+        // 정확한 매칭 (대소문자 무시, 공백 정규화)
+        if (normalizedCompany != normalizedSelected) {
+          debugPrint('카테고리 불일치: company="$companyCategory" selected="$selectedCategory"');
+          return false;
+        }
+      }
+      
+      // 세부카테고리 필터링
+      if (_selectedSubcategory != null && _selectedSubcategory!.isNotEmpty) {
+        final companySubcategory = company.subcategory.trim();
+        final selectedSubcategory = _selectedSubcategory!.trim();
+        
+        // 정규화 함수
+        String normalize(String text) {
+          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+        }
+        
+        final normalizedCompany = normalize(companySubcategory);
+        final normalizedSelected = normalize(selectedSubcategory);
+        
+        // 정확한 매칭
+        if (normalizedCompany != normalizedSelected) {
+          debugPrint('세부카테고리 불일치: company="$companySubcategory" selected="$selectedSubcategory"');
+          return false;
+        }
+      }
+      
+      // 3차 세부카테고리 필터링
+      if (_selectedSubSubcategory != null && _selectedSubSubcategory!.isNotEmpty) {
+        final companySubSubcategory = (company.subSubcategory ?? '').trim();
+        final selectedSubSubcategory = _selectedSubSubcategory!.trim();
+        
+        if (companySubSubcategory.isEmpty || companySubSubcategory.trim() != selectedSubSubcategory.trim()) {
+          return false;
+        }
+      }
+      
       // 검색어 필터링
       if (_searchQuery.isNotEmpty) {
         final searchLower = _searchQuery.toLowerCase();
@@ -129,6 +193,8 @@ class CompanyViewModel extends ChangeNotifier {
 
       return true;
     }).toList();
+    
+    debugPrint('🔍 필터 적용 결과: 전체 ${_companies.length}개 -> 필터링 ${_filteredCompanies.length}개');
 
     // 정렬: 프리미엄(광고비 높은 순) -> 일반(최신순)
     _filteredCompanies.sort((a, b) {

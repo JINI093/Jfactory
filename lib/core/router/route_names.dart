@@ -5,7 +5,9 @@ class RouteNames {
   static const String main = '/main';
   static const String companyDetail = '/company/:id';
   static const String categoryDetail = '/category/:categoryTitle';
+  static const String subcategoryDetail = '/category/:categoryTitle/subcategory/:subcategoryTitle';
   static const String premiumPostDetail = '/post/:postId';
+  static const String postDetail = '/post-detail/:postId';
   static const String companyPage = '/company-page/:companyId';
   static const String companyList = '/companies';
   static const String search = '/search';
@@ -20,5 +22,9 @@ class RouteNames {
   static const String payment = '/payment';
   static const String inquiry = '/inquiry';
   static const String advertisementRegistration = '/advertisement-registration';
+  static const String companyRegistration = '/company-registration';
+  static const String postRegistration = '/post-registration';
+  static const String fullscreenMap = '/fullscreen-map';
+  static const String adminMain = '/admin';
   RouteNames._();
 }

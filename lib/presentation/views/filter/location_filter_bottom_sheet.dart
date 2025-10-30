@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:provider/provider.dart';
+import '../../viewmodels/main_viewmodel.dart';
 
 class LocationFilterBottomSheet extends StatefulWidget {
-  const LocationFilterBottomSheet({super.key});
+  final List<Map<String, String>> selectedLocations;
+  
+  const LocationFilterBottomSheet({
+    super.key,
+    this.selectedLocations = const [],
+  });
 
   @override
   State<LocationFilterBottomSheet> createState() => _LocationFilterBottomSheetState();
@@ -10,7 +17,7 @@ class LocationFilterBottomSheet extends StatefulWidget {
 
 class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
   String? selectedRegion;
-  String? selectedDistrict;
+  List<Map<String, String>> selectedLocations = [];
   
   final Map<String, List<String>> regions = {
     '서울': [
@@ -105,25 +112,27 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
   void _resetFilters() {
     setState(() {
       selectedRegion = null;
-      selectedDistrict = null;
+      selectedLocations.clear();
     });
   }
 
   void _applyFilters() {
     // Return the selected filters
-    Navigator.of(context).pop({
-      'region': selectedRegion,
-      'district': selectedDistrict,
-    });
+    Navigator.of(context).pop(selectedLocations);
   }
 
-  int get _resultCount {
-    // Mock result count based on selection
-    if (selectedRegion == null) return 31894;
-    if (selectedDistrict == null || selectedDistrict == '전체' || selectedDistrict == '전지역') {
-      return 31894;
-    }
-    return 31894; // This would be calculated based on actual filters
+  int _getResultCount(MainViewModel mainViewModel) {
+    return mainViewModel.getFilteredCount(
+      category: mainViewModel.selectedCategory,
+      subcategory: mainViewModel.selectedSubcategory,
+      locations: selectedLocations.isNotEmpty ? selectedLocations : null,
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    selectedLocations = List.from(widget.selectedLocations);
   }
 
   @override
@@ -187,7 +196,6 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
               onTap: () {
                 setState(() {
                   selectedRegion = region;
-                  selectedDistrict = null; // Reset district when region changes
                 });
               },
               child: Container(
@@ -195,7 +203,7 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
                 decoration: BoxDecoration(
                   color: isSelected ? Colors.white : Colors.transparent,
                   border: isSelected 
-                    ? Border(right: BorderSide(color: const Color(0xFF1E3A5F), width: 2))
+                    ? const Border(right: BorderSide(color: Color(0xFF1E3A5F), width: 2))
                     : null,
                 ),
                 child: Text(
@@ -225,11 +233,40 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
               Expanded(
                 child: ListView(
                   children: districts.map((district) {
-                    final isSelected = selectedDistrict == district;
+                    final isSelected = selectedLocations.any(
+                      (loc) => loc['region'] == selectedRegion && loc['district'] == district
+                    );
                     return GestureDetector(
                       onTap: () {
                         setState(() {
-                          selectedDistrict = district;
+                          if (district == '전체' || district == '전지역') {
+                            // Clear all districts for this region and add only '전체'
+                            selectedLocations.removeWhere((loc) => loc['region'] == selectedRegion);
+                            selectedLocations.add({
+                              'region': selectedRegion!,
+                              'district': district,
+                            });
+                          } else {
+                            // Remove '전체' if exists for this region
+                            selectedLocations.removeWhere((loc) => 
+                              loc['region'] == selectedRegion && 
+                              (loc['district'] == '전체' || loc['district'] == '전지역')
+                            );
+                            
+                            // Toggle selection
+                            final existingIndex = selectedLocations.indexWhere(
+                              (loc) => loc['region'] == selectedRegion && loc['district'] == district
+                            );
+                            
+                            if (existingIndex >= 0) {
+                              selectedLocations.removeAt(existingIndex);
+                            } else {
+                              selectedLocations.add({
+                                'region': selectedRegion!,
+                                'district': district,
+                              });
+                            }
+                          }
                         });
                       },
                       child: Container(
@@ -267,13 +304,21 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
       ),
       child: Column(
         children: [
-          // Selected filter chip
-          if (selectedRegion != null && selectedDistrict != null && selectedDistrict != '전체')
+          // Selected filter chips
+          if (selectedLocations.isNotEmpty)
             Container(
               margin: EdgeInsets.only(bottom: 16.h),
+              width: double.infinity,
               child: Wrap(
-                children: [
-                  Container(
+                spacing: 8.w,
+                runSpacing: 8.h,
+                children: selectedLocations.map((location) {
+                  final region = location['region']!;
+                  final district = location['district']!;
+                  if (district == '전체' || district == '전지역') {
+                    return Container();
+                  }
+                  return Container(
                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                     decoration: BoxDecoration(
                       color: Colors.grey[100],
@@ -284,7 +329,7 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '$selectedRegion > $selectedDistrict',
+                          '$region > $district',
                           style: TextStyle(
                             fontSize: 12.sp,
                             color: Colors.black87,
@@ -294,7 +339,9 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
                         GestureDetector(
                           onTap: () {
                             setState(() {
-                              selectedDistrict = null;
+                              selectedLocations.removeWhere(
+                                (loc) => loc['region'] == region && loc['district'] == district
+                              );
                             });
                           },
                           child: Icon(
@@ -305,8 +352,8 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  );
+                }).toList(),
               ),
             ),
           // Bottom buttons
@@ -356,15 +403,20 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
                       color: const Color(0xFF1E3A5F),
                       borderRadius: BorderRadius.circular(8.r),
                     ),
-                    child: Center(
-                      child: Text(
-                        '${_resultCount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},')}개 결과보기',
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    child: Consumer<MainViewModel>(
+                      builder: (context, mainViewModel, child) {
+                        final resultCount = _getResultCount(mainViewModel);
+                        return Center(
+                          child: Text(
+                            '${resultCount.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},')}개 결과보기',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -378,22 +430,14 @@ class _LocationFilterBottomSheetState extends State<LocationFilterBottomSheet> {
 }
 
 // Helper function to show the bottom sheet
-void showLocationFilterBottomSheet(BuildContext context) {
-  showModalBottomSheet(
+Future<List<Map<String, String>>?> showLocationFilterBottomSheet(
+  BuildContext context, {
+  List<Map<String, String>> selectedLocations = const [],
+}) {
+  return showModalBottomSheet<List<Map<String, String>>>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => const LocationFilterBottomSheet(),
-  ).then((result) {
-    if (result != null) {
-      // Handle the filter result
-      print('Selected filters: $result');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('필터 적용: ${result['region']} > ${result['district']}'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  });
+    builder: (context) => LocationFilterBottomSheet(selectedLocations: selectedLocations),
+  );
 }

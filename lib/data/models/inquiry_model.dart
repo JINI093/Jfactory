@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/entities/inquiry_entity.dart';
 
 class InquiryModel {
@@ -44,13 +45,13 @@ class InquiryModel {
         (e) => e.toString().split('.').last == json['status'],
         orElse: () => InquiryStatus.pending,
       ),
-      createdAt: json['createdAt'] is String
-          ? DateTime.parse(json['createdAt'])
-          : (json['createdAt'] as dynamic).toDate(),
+      createdAt: json['createdAt'] is Timestamp
+          ? (json['createdAt'] as Timestamp).toDate()
+          : DateTime.parse(json['createdAt']),
       answeredAt: json['answeredAt'] != null
-          ? (json['answeredAt'] is String
-              ? DateTime.parse(json['answeredAt'])
-              : (json['answeredAt'] as dynamic).toDate())
+          ? (json['answeredAt'] is Timestamp
+              ? (json['answeredAt'] as Timestamp).toDate()
+              : DateTime.parse(json['answeredAt']))
           : null,
       answer: json['answer'] as String?,
       adminId: json['adminId'] as String?,
@@ -67,8 +68,8 @@ class InquiryModel {
       'content': content,
       'type': type.toString().split('.').last,
       'status': status.toString().split('.').last,
-      'createdAt': createdAt.toIso8601String(),
-      'answeredAt': answeredAt?.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'answeredAt': answeredAt != null ? Timestamp.fromDate(answeredAt!) : null,
       'answer': answer,
       'adminId': adminId,
       'attachments': attachments,

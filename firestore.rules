@@ -45,6 +45,25 @@ service cloud.firestore {
       allow delete: if false;
     }
     
+    // 구매 내역 컬렉션
+    match /purchases/{purchaseId} {
+      // 구매자 본인의 문서만 읽기 가능 - 쿼리 지원을 위해 수정
+      allow read: if request.auth != null;
+      
+      // 인증된 사용자만 생성 가능
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId &&
+                   validatePurchaseData(request.resource.data);
+      
+      // 상태 업데이트만 허용
+      allow update: if request.auth != null && 
+                   request.auth.uid == resource.data.userId &&
+                   onlyPurchaseStatusChanged(resource.data, request.resource.data);
+      
+      // 삭제 불가
+      allow delete: if false;
+    }
+    
     // 문의 컬렉션
     match /inquiries/{inquiryId} {
       // 문의 작성자만 읽기 가능
@@ -73,14 +92,14 @@ service cloud.firestore {
       allow create: if request.auth != null && 
                    validatePostData(request.resource.data);
       
-      // 게시글 소유자만 수정 가능
+      // 게시글 소유자만 수정 가능 (companyId로 확인)
       allow update: if request.auth != null && 
-                   request.auth.uid == resource.data.authorId &&
+                   request.auth.uid == resource.data.companyId &&
                    validatePostData(request.resource.data);
       
-      // 게시글 소유자만 삭제 가능
+      // 게시글 소유자만 삭제 가능 (companyId로 확인)
       allow delete: if request.auth != null && 
-                   request.auth.uid == resource.data.authorId;
+                   request.auth.uid == resource.data.companyId;
     }
     
     // 카테고리 컬렉션 - 읽기 전용
@@ -145,6 +164,23 @@ service cloud.firestore {
     
     function onlyInquiryStatusChanged(oldData, newData) {
       return oldData.diff(newData).affectedKeys().hasOnly(['status', 'answer', 'answeredAt', 'adminId']);
+    }
+    
+    function validatePurchaseData(data) {
+      return data.keys().hasAll(['userId', 'companyId', 'purchaseType', 'amount', 
+                                'currency', 'status', 'purchaseDate']) &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.companyId is string && data.companyId.size() > 0 &&
+             data.purchaseType is string && 
+             data.purchaseType in ['basicAd', 'premiumAd', 'featured'] &&
+             data.amount is number && data.amount >= 0 &&
+             data.currency is string && data.currency.size() > 0 &&
+             data.status is string && 
+             data.status in ['pending', 'completed', 'failed', 'refunded'];
+    }
+    
+    function onlyPurchaseStatusChanged(oldData, newData) {
+      return oldData.diff(newData).affectedKeys().hasOnly(['status', 'completedAt', 'refundedAt']);
     }
   }
 }

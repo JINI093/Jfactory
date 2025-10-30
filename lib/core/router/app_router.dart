@@ -8,11 +8,17 @@ import '../../presentation/views/auth/signup_view.dart';
 import '../../presentation/views/main/main_view.dart';
 import '../../presentation/views/company/company_detail_view.dart';
 import '../../presentation/views/category/category_detail_view.dart';
+import '../../presentation/views/category/subcategory_detail_view.dart';
 import '../../presentation/views/post/premium_post_detail_view.dart';
 import '../../presentation/views/company/company_page_view.dart';
 import '../../presentation/views/favorites/favorites_view.dart';
 import '../../presentation/views/profile/profile_view.dart';
 import '../../presentation/views/advertisement/advertisement_registration_view.dart';
+import '../../presentation/views/advertisement/post_registration_view.dart';
+import '../../presentation/views/company/company_registration_view.dart';
+import '../../presentation/views/purchase/ad_purchase_view.dart';
+import '../../presentation/views/inquiry/inquiry_submission_view.dart';
+import '../../presentation/views/admin/admin_main.dart';
 import '../../presentation/viewmodels/auth_viewmodel.dart';
 
 class AppRouter {
@@ -75,6 +81,18 @@ class AppRouter {
         },
       ),
       GoRoute(
+        path: RouteNames.subcategoryDetail,
+        name: 'subcategory_detail',
+        builder: (context, state) {
+          final categoryTitle = state.pathParameters['categoryTitle']!;
+          final subcategoryTitle = state.pathParameters['subcategoryTitle']!;
+          return SubcategoryDetailView(
+            categoryTitle: categoryTitle,
+            subcategoryTitle: subcategoryTitle,
+          );
+        },
+      ),
+      GoRoute(
         path: RouteNames.premiumPostDetail,
         name: 'premium_post_detail',
         builder: (context, state) {
@@ -104,6 +122,31 @@ class AppRouter {
         path: RouteNames.advertisementRegistration,
         name: 'advertisement_registration',
         builder: (context, state) => const AdvertisementRegistrationView(),
+      ),
+      GoRoute(
+        path: RouteNames.companyRegistration,
+        name: 'company_registration',
+        builder: (context, state) => const CompanyRegistrationView(),
+      ),
+      GoRoute(
+        path: RouteNames.postRegistration,
+        name: 'post_registration',
+        builder: (context, state) => const PostRegistrationView(),
+      ),
+      GoRoute(
+        path: '/ad-purchase',
+        name: 'ad_purchase',
+        builder: (context, state) => const AdPurchaseView(),
+      ),
+      GoRoute(
+        path: '/inquiry-submission',
+        name: 'inquiry_submission',
+        builder: (context, state) => const InquirySubmissionView(),
+      ),
+      GoRoute(
+        path: RouteNames.adminMain,
+        name: 'admin_main',
+        builder: (context, state) => const AdminMainView(),
       ),
       // Add error handling route
       GoRoute(
@@ -228,6 +271,18 @@ class AppRouter {
         },
       ),
       GoRoute(
+        path: RouteNames.subcategoryDetail,
+        name: 'subcategory_detail',
+        builder: (context, state) {
+          final categoryTitle = state.pathParameters['categoryTitle']!;
+          final subcategoryTitle = state.pathParameters['subcategoryTitle']!;
+          return SubcategoryDetailView(
+            categoryTitle: categoryTitle,
+            subcategoryTitle: subcategoryTitle,
+          );
+        },
+      ),
+      GoRoute(
         path: RouteNames.premiumPostDetail,
         name: 'premium_post_detail',
         builder: (context, state) {
@@ -257,6 +312,31 @@ class AppRouter {
         path: RouteNames.advertisementRegistration,
         name: 'advertisement_registration',
         builder: (context, state) => const AdvertisementRegistrationView(),
+      ),
+      GoRoute(
+        path: RouteNames.companyRegistration,
+        name: 'company_registration',
+        builder: (context, state) => const CompanyRegistrationView(),
+      ),
+      GoRoute(
+        path: RouteNames.postRegistration,
+        name: 'post_registration',
+        builder: (context, state) => const PostRegistrationView(),
+      ),
+      GoRoute(
+        path: '/ad-purchase',
+        name: 'ad_purchase',
+        builder: (context, state) => const AdPurchaseView(),
+      ),
+      GoRoute(
+        path: '/inquiry-submission',
+        name: 'inquiry_submission',
+        builder: (context, state) => const InquirySubmissionView(),
+      ),
+      GoRoute(
+        path: RouteNames.adminMain,
+        name: 'admin_main',
+        builder: (context, state) => const AdminMainView(),
       ),
     ],
   );

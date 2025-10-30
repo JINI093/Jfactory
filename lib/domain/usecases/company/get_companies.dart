@@ -11,6 +11,7 @@ class GetCompaniesUseCase {
       return await _companyRepository.getCompanies(
         category: params.category,
         subcategory: params.subcategory,
+        subSubcategory: params.subSubcategory,
         region: params.region,
         limit: params.limit,
         orderBy: params.orderBy,
@@ -25,6 +26,7 @@ class GetCompaniesUseCase {
 class GetCompaniesParams {
   final String? category;
   final String? subcategory;
+  final String? subSubcategory;
   final String? region;
   final int? limit;
   final String? orderBy;
@@ -33,6 +35,7 @@ class GetCompaniesParams {
   GetCompaniesParams({
     this.category,
     this.subcategory,
+    this.subSubcategory,
     this.region,
     this.limit,
     this.orderBy,

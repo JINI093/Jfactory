@@ -13,6 +13,24 @@ class PostEntity {
   final List<String> tags;
   final bool isPremium;
   final DateTime? premiumExpiryDate;
+  
+  // Equipment/Post specific fields
+  final String? category;
+  final String? subcategory;
+  final String? subSubcategory;
+  final String? equipmentName;
+  final String? manufacturer;
+  final String? model;
+  final String? dimensionX;
+  final String? dimensionY;
+  final String? dimensionZ;
+  final String? weight;
+  final String? tableSize;
+  final String? features;
+  final String? quantity;
+  final String? industry;
+  final String? machiningCenter;
+  final String? basicSpecs;
 
   const PostEntity({
     required this.id,
@@ -27,6 +45,22 @@ class PostEntity {
     required this.tags,
     required this.isPremium,
     this.premiumExpiryDate,
+    this.category,
+    this.subcategory,
+    this.subSubcategory,
+    this.equipmentName,
+    this.manufacturer,
+    this.model,
+    this.dimensionX,
+    this.dimensionY,
+    this.dimensionZ,
+    this.weight,
+    this.tableSize,
+    this.features,
+    this.quantity,
+    this.industry,
+    this.machiningCenter,
+    this.basicSpecs,
   });
 
   PostEntity copyWith({

@@ -1,76 +1,40 @@
 {
   "project_info": {
-    "project_number": "366878131351",
-    "project_id": "j-factory",
-    "storage_bucket": "j-factory.firebasestorage.app"
+    "project_number": "468556282634",
+    "project_id": "fir-test-96091",
+    "storage_bucket": "fir-test-96091.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:366878131351:android:cef8649585fb60acb255d2",
+        "mobilesdk_app_id": "1:468556282634:android:1ecea6bdd9bdd90806d8f3",
         "android_client_info": {
-          "package_name": "com.example.vendor_ads"
+          "package_name": "vendor.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
+          "client_id": "468556282634-oh0k88lresjldc77qgflshf7jsmuelcr.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyAHWWFg_Jah3XfL-_3FqN3O9DOJkFs5dyA"
+          "current_key": "AIzaSyCFYUY93SUSMC7ZD9fhsH4YFFOs-3cl-vo"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
+              "client_id": "468556282634-oh0k88lresjldc77qgflshf7jsmuelcr.apps.googleusercontent.com",
               "client_type": 3
             },
             {
-              "client_id": "366878131351-tmjafr92ga7m0onapkadtjhtvbcd2pka.apps.googleusercontent.com",
+              "client_id": "468556282634-facu5f56ck3aqrb0egga34b5up3o6ata.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "j.fatory"
-              }
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:366878131351:android:954f1e84ae13ee69b255d2",
-        "android_client_info": {
-          "package_name": "j.factory"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyAHWWFg_Jah3XfL-_3FqN3O9DOJkFs5dyA"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "366878131351-rk60lml0lv5lroha8h5injek6h27orc0.apps.googleusercontent.com",
-              "client_type": 3
-            },
-            {
-              "client_id": "366878131351-tmjafr92ga7m0onapkadtjhtvbcd2pka.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "j.fatory"
+                "bundle_id": "vendor"
               }
             }
           ]

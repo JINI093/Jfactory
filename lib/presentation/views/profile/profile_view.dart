@@ -2,9 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/router/route_names.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../viewmodels/auth_viewmodel.dart';
+import '../../../domain/entities/purchase_entity.dart' as entities;
+import 'package:url_launcher/url_launcher.dart';
+import '../../../domain/entities/inquiry_entity.dart';
+import '../../../domain/entities/post_entity.dart';
+import '../../../domain/repositories/inquiry_repository.dart';
+import '../../../domain/repositories/post_repository.dart';
+import '../../../domain/repositories/purchase_repository.dart';
+import '../post/post_detail_view.dart';
+import '../../../data/models/category_model.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -19,6 +30,18 @@ class _ProfileViewState extends State<ProfileView> {
   List<Map<String, String>> partnerItems = [{'name': '', 'details': ''}];
   int _selectedTabIndex = 0;
   
+  // Company data state
+  Map<String, dynamic>? _companyData;
+  bool _isLoadingCompanyData = false;
+  String? _companyDataError;
+  bool _hasInitialLoadTriggered = false;
+  bool _isEditMode = false;
+  bool _isSaving = false;
+  
+  // Account edit mode state
+  bool _isAccountEditMode = false;
+  bool _isAccountSaving = false;
+  
   // Form controllers
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _ceoNameController = TextEditingController();
@@ -29,17 +52,109 @@ class _ProfileViewState extends State<ProfileView> {
   final TextEditingController _greetingController = TextEditingController();
   final TextEditingController _featuresController = TextEditingController();
   
+  // Account info controllers
+  final TextEditingController _accountCompanyNameController = TextEditingController();
+  final TextEditingController _accountPhoneController = TextEditingController();
+  
   // Password controllers
   final TextEditingController _currentPasswordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
   
+  // Category selection for editing
+  String? _selectedCategory;
+  String? _selectedSubcategory;
+  String? _selectedSubSubcategory;
+  
+  // Categories data from CategoryData
+  List<CategoryModel> get _categories => CategoryData.categories;
+  
+  // Legacy category mapping for backward compatibility
+  final Map<String, String> _legacyCategoryMapping = {
+    '절삭가공': '기계 제작',
+    '절단/밴딩/절곡/용접': '기계 제작',
+    '사출': '사출\n(공병, 플라스틱 등)',
+    '금형': '*금형\n*3D 프린터',
+    '*금형 *3D 프린터': '*금형\n*3D 프린터', // Firebase에 저장된 형태
+    '표면처리': '*표면처리\n*건조기\n(열,UV,LED)',
+    '인쇄': '인쇄',
+    '기계제작': '기계 제작',
+    '공구 MALL': '공구 MALL',
+    '볼트': '공구 MALL',
+    '유공압': '*유공압\n*모터',
+    '전기 자재': '공구 MALL',
+    'Vision': '*Vision\n(비전)\n*Robot\n(무인화)',
+    'Motor': '*유공압\n*모터',
+  };
+  
+  // Get subcategories for selected category
+  List<String> _getSubcategoriesForSelectedCategory() {
+    if (_selectedCategory == null) return [];
+    
+    final selectedCategoryModel = _categories.firstWhere(
+      (category) => category.title == _selectedCategory,
+      orElse: () => CategoryModel(title: '', subcategories: []),
+    );
+    
+    return selectedCategoryModel.subcategories;
+  }
+
+  // Get sub-subcategories for selected subcategory
+  List<String> _getSubSubcategoriesForSelected() {
+    if (_selectedCategory == null || _selectedSubcategory == null) return [];
+    return CategoryData.getSubSubcategories(_selectedCategory!, _selectedSubcategory!) ?? [];
+  }
+
+  // Dropdown helper: add dividers between items for better readability
+  List<DropdownMenuItem<String>> _buildItemsWithDividers(List<String> items) {
+    final List<DropdownMenuItem<String>> result = [];
+    for (int i = 0; i < items.length; i++) {
+      result.add(
+        DropdownMenuItem<String>(
+          value: items[i],
+          child: Text(items[i]),
+        ),
+      );
+      if (i < items.length - 1) {
+        result.add(
+          const DropdownMenuItem<String>(
+            enabled: false,
+            value: '__divider__',
+            child: Divider(height: 1),
+          ),
+        );
+      }
+    }
+    return result;
+  }
+  
+  // Map legacy category to new category
+  String? _mapLegacyCategory(String? legacyCategory) {
+    if (legacyCategory == null) return null;
+    return _legacyCategoryMapping[legacyCategory] ?? legacyCategory;
+  }
+  
+  // Check if category is valid
+  bool _isValidCategory(String? category) {
+    if (category == null) return false;
+    return _categories.any((cat) => cat.title == category);
+  }
+  
+  // Check if subcategory is valid for current category
+  bool _isValidSubcategory(String? subcategory) {
+    if (subcategory == null || _selectedCategory == null) return false;
+    return _getSubcategoriesForSelectedCategory().contains(subcategory);
+  }
+
+  bool _isValidSubSubcategory(String? subSubcategory) {
+    if (subSubcategory == null || _selectedCategory == null || _selectedSubcategory == null) return false;
+    return _getSubSubcategoriesForSelected().contains(subSubcategory);
+  }
+  
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadUserData();
-    });
+    // Consumer pattern으로 이동했으므로 여기서 직접 호출하지 않음
   }
   
   @override
@@ -52,46 +167,183 @@ class _ProfileViewState extends State<ProfileView> {
     _detailAddressController.dispose();
     _greetingController.dispose();
     _featuresController.dispose();
+    _accountCompanyNameController.dispose();
+    _accountPhoneController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
   
-  void _loadUserData() {
-    final authViewModel = context.read<AuthViewModel>();
-    if (authViewModel.currentUser != null) {
-      // TODO: Load user's company data if they have one
-      // For now, we'll populate with sample data
-      _populateFormFields(authViewModel.currentUser!);
+  
+  Future<void> _loadCompanyData() async {
+    // 이미 로딩 중이면 중복 호출 방지
+    if (_isLoadingCompanyData) {
+      return;
+    }
+    
+    setState(() {
+      _isLoadingCompanyData = true;
+      _companyDataError = null;
+      _companyData = null; // 기존 데이터 초기화
+    });
+    
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception('사용자가 로그인되지 않았습니다.');
+      }
+      
+      // Load company data from Firestore companies collection
+      DocumentSnapshot companyDoc;
+      
+      // First try with current user UID
+      companyDoc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(currentUser.uid)
+          .get();
+      
+      // If not found with UID, try to find by userId field
+      if (!companyDoc.exists) {
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('companies')
+            .where('userId', isEqualTo: currentUser.uid)
+            .limit(1)
+            .get();
+        
+        if (querySnapshot.docs.isNotEmpty) {
+          companyDoc = querySnapshot.docs.first;
+        }
+      }
+      
+      // If still not found, try with the specific document ID as fallback
+      if (!companyDoc.exists) {
+        companyDoc = await FirebaseFirestore.instance
+            .collection('companies')
+            .doc('iXg3uBzc7VZvhcLd0jVqHGJ9Z972')
+            .get();
+      }
+      
+      if (mounted) {
+        if (companyDoc.exists && companyDoc.data() != null) {
+          setState(() {
+            _companyData = companyDoc.data() as Map<String, dynamic>?;
+            _isLoadingCompanyData = false;
+          });
+          _populateCompanyFields();
+        } else {
+          setState(() {
+            _companyData = null;
+            _isLoadingCompanyData = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _companyDataError = '기업 정보를 불러오는 중 오류가 발생했습니다: ${e.toString()}';
+          _isLoadingCompanyData = false;
+          _companyData = null;
+        });
+      }
+      debugPrint('Error loading company data: $e');
     }
   }
   
   void _populateFormFields(UserEntity user) {
-    _companyNameController.text = '';
     _ceoNameController.text = user.name;
     _phoneController.text = user.phone;
-    // Other fields can be populated when company data is available
+  }
+  
+  void _populateAccountFields(UserEntity user) {
+    _accountCompanyNameController.text = user.companyName ?? '';
+    _accountPhoneController.text = user.phone;
+  }
+  
+  void _populateCompanyFields() {
+    if (_companyData == null) return;
+    
+    _companyNameController.text = _companyData!['companyName'] ?? '';
+    _ceoNameController.text = _companyData!['ceoName'] ?? '';
+    _phoneController.text = _companyData!['phone'] ?? '';
+    _addressController.text = _companyData!['address'] ?? '';
+    _detailAddressController.text = _companyData!['detailAddress'] ?? '';
+    _websiteController.text = _companyData!['website'] ?? '';
+    _greetingController.text = _companyData!['greeting'] ?? '';
+    _featuresController.text = _companyData!['features'] ?? '';
+    
+    // Populate category information with legacy mapping
+    final legacyCategory = _companyData!['category'];
+    _selectedCategory = _mapLegacyCategory(legacyCategory);
+    _selectedSubcategory = _companyData!['subcategory'];
+    _selectedSubSubcategory = _companyData!['subSubcategory'];
+    
+    // Populate history items
+    if (_companyData!['history'] != null) {
+      final historyList = _companyData!['history'] as List<dynamic>;
+      historyItems = historyList.map((item) => {
+        'year': item['year']?.toString() ?? '',
+        'content': item['content']?.toString() ?? '',
+      }).toList();
+      
+      if (historyItems.isEmpty) {
+        historyItems = [{'year': '', 'content': ''}];
+      }
+    }
+    
+    // Populate partner items
+    if (_companyData!['clients'] != null) {
+      final clientsList = _companyData!['clients'] as List<dynamic>;
+      partnerItems = clientsList.map((item) => {
+        'name': item['name']?.toString() ?? '',
+        'details': item['details']?.toString() ?? '',
+      }).toList();
+      
+      if (partnerItems.isEmpty) {
+        partnerItems = [{'name': '', 'details': ''}];
+      }
+    }
   }
   
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildTabBar(),
-            _selectedTabIndex == 0 
-                ? _buildCompanyInfoTab() 
-                : _selectedTabIndex == 1
-                    ? _buildAccountManagementTab()
-                    : _buildGeneralInfoTab(),
-          ],
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+    return Consumer<AuthViewModel>(
+      builder: (context, authViewModel, child) {
+        // AuthViewModel이 인증되고 사용자가 있으면 데이터 로드 (한 번만)
+        if (authViewModel.isAuthenticated && 
+            authViewModel.currentUser != null && 
+            _companyData == null && 
+            !_isLoadingCompanyData && 
+            !_hasInitialLoadTriggered && 
+            !authViewModel.isLoading) {
+          _hasInitialLoadTriggered = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _populateFormFields(authViewModel.currentUser!);
+              _populateAccountFields(authViewModel.currentUser!);
+              _loadCompanyData();
+            }
+          });
+        }
+        
+        return Scaffold(
+          backgroundColor: Colors.white,
+          appBar: _buildAppBar(),
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                _buildTabBar(),
+                _selectedTabIndex == 0 
+                    ? _buildCompanyInfoTab() 
+                    : _selectedTabIndex == 1
+                        ? _buildAccountManagementTab()
+                        : _buildGeneralInfoTab(),
+              ],
+            ),
+          ),
+          bottomNavigationBar: _buildBottomNavigationBar(),
+        );
+      },
     );
   }
 
@@ -223,6 +475,120 @@ class _ProfileViewState extends State<ProfileView> {
 
   // Company Info Tab
   Widget _buildCompanyInfoTab() {
+    if (_isLoadingCompanyData) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(40.h),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16.h),
+              Text(
+                '기업 정보를 불러오는 중...',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    if (_companyDataError != null) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(40.h),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 48.sp,
+                color: Colors.red,
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                _companyDataError!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.red,
+                ),
+              ),
+              SizedBox(height: 16.h),
+              ElevatedButton(
+                onPressed: () {
+                  // 재시도 시 상태 초기화
+                  setState(() {
+                    _hasInitialLoadTriggered = false;
+                  });
+                  _loadCompanyData();
+                },
+                child: const Text('다시 시도'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // 로딩이 완료되었고 데이터가 없으며 에러도 없을 때만 빈 상태 표시
+    if (!_isLoadingCompanyData && _companyData == null && _companyDataError == null) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(40.h),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.business_center_outlined,
+                size: 48.sp,
+                color: Colors.grey[400],
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                '등록된 기업 정보가 없습니다',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                '기업회원 등록을 먼저 완료해주세요',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 24.h),
+              ElevatedButton(
+                onPressed: () {
+                  // Navigate to company registration
+                  context.push(RouteNames.companyRegistration);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E3A5F),
+                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+                ),
+                child: Text(
+                  '기업회원 등록하기',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
     return Form(
       key: _formKey,
       child: Column(
@@ -234,30 +600,35 @@ class _ProfileViewState extends State<ProfileView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(height: 20.h),
-                _buildTextFieldWithController('기업명', '기업명을 입력해주세요', _companyNameController),
+                _buildCompanyImagesSection(),
                 SizedBox(height: 20.h),
-                _buildTextFieldWithController('기업대표명', 'CEO 이름을 입력해주세요', _ceoNameController, isRequired: true),
+                _buildTextFieldWithController('기업명', '기업명을 입력해주세요', _companyNameController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildTextFieldWithController('홈페이지', '홈페이지 주소를 입력해주세요', _websiteController),
+                _buildTextFieldWithController('기업대표명', 'CEO 이름을 입력해주세요', _ceoNameController, isRequired: true, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildTextFieldWithController('기업전화번호', '전화번호를 입력해주세요', _phoneController),
+                _buildTextFieldWithController('홈페이지', '홈페이지 주소를 입력해주세요', _websiteController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildAddressSection(),
+                _buildTextFieldWithController('기업전화번호', '전화번호를 입력해주세요', _phoneController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildTextField('상세주소', '상세주소를 입력해주세요'),
+                _buildTextFieldWithController('기업주소', '기업주소를 입력해주세요', _addressController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildTextField('인사말', '인사말을 입력해주세요'),
+                _buildTextFieldWithController('상세주소', '상세주소를 입력해주세요', _detailAddressController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildGenderSection(),
+                _buildTextFieldWithController('인사말', '인사말을 입력해주세요', _greetingController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
-                _buildAddressUpdateSection(),
+                if (!_isEditMode) _buildCategoryDisplaySection() else _buildCategoryEditSection(),
                 SizedBox(height: 20.h),
-                _buildAddressRegistrationSection(),
+                if (!_isEditMode) _buildHistoryDisplaySection() else _buildHistoryEditSection(),
+                SizedBox(height: 20.h),
+                if (!_isEditMode) _buildClientsDisplaySection() else _buildClientsEditSection(),
+                SizedBox(height: 20.h),
+                _buildTextFieldWithController('특징', '기업 특징을 입력해주세요', _featuresController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
               ],
             ),
           ),
           _buildSpecialNoteSection(),
+          if (_companyData != null) _buildEditSaveButton(),
           SizedBox(height: 40.h),
         ],
       ),
@@ -300,12 +671,14 @@ class _ProfileViewState extends State<ProfileView> {
           '개인 정보 처리 방침',
           null,
           hasDropdown: true,
+          onTap: _openPrivacyPolicy,
         ),
         _buildDivider(),
         _buildGeneralInfoItem(
           '서비스 이용약관',
           null,
           hasDropdown: true,
+          onTap: _openTermsOfService,
         ),
       ],
     );
@@ -330,7 +703,7 @@ class _ProfileViewState extends State<ProfileView> {
       children: [
         _buildSubItem(
           '유료광고',
-          '유료광고 등록은 어떻게 하나요? 에 대한 답변입니다 나중 예정입니다\n이 무료예제는 제목에 대한 내용을 보여줄 예정이며 관리자에서\n수정할 수 있습니다 여러의 더길 길면이 있는 곳 까지 잘가는 줄\n예정입니다 또한 유료광고는 계시글 유료광고는 즐 등록될 때 허\n터에 나온 서비스 올려야시면 광고를 구매하는 위들이는 나올니다',
+          '유료광고 등록은 어떻게 하나요? 에 대한 답변입니다 나중 예정입니다\n이 무료예제는 제목에 대한 내용을 보여줄 예정이며 관리자에서\n수정할 수 있습니다 여러의 더길 길면이 있는 곳 까지 잘가는 줄\n예정입니다 또한 유료광고는 게시글 유료광고는 즐 등록될 때 허\n터에 나온 서비스 올려야시면 광고를 구매하는 위들이는 나올니다',
         ),
         _buildSubItem('자재 제목', null),
         _buildSubItem('자주 묻는 질문', null),
@@ -374,7 +747,29 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _buildGeneralInfoItem(String title, String? content, {bool hasDropdown = false}) {
+  Widget _buildGeneralInfoItem(String title, String? content, {bool hasDropdown = false, VoidCallback? onTap}) {
+    if (onTap != null) {
+      // For clickable items like privacy policy and terms
+      return ListTile(
+        title: Text(
+          title,
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        trailing: Icon(
+          Icons.open_in_new,
+          color: Colors.grey[600],
+          size: 20.sp,
+        ),
+        onTap: onTap,
+        contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      );
+    }
+    
+    // For expandable items
     return ExpansionTile(
       tilePadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       title: Text(
@@ -407,6 +802,52 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
+  Future<void> _openPrivacyPolicy() async {
+    final url = Uri.parse('https://www.notion.so/24c61d84851980feb8cdf7f031b8c642');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(
+          url,
+          mode: LaunchMode.inAppWebView,
+        );
+      } else {
+        throw Exception('Cannot launch URL');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('개인 정보 처리 방침 페이지를 열 수 없습니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openTermsOfService() async {
+    final url = Uri.parse('https://www.notion.so/24c61d84851980efbc54d21196296bb1');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(
+          url,
+          mode: LaunchMode.inAppWebView,
+        );
+      } else {
+        throw Exception('Cannot launch URL');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('서비스 이용약관 페이지를 열 수 없습니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildPasswordSection() {
     return ExpansionTile(
       title: Text(
@@ -421,35 +862,117 @@ class _ProfileViewState extends State<ProfileView> {
         Container(
           padding: EdgeInsets.all(16.w),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildAccountInfoRow('기업명', '김기업123'),
-              SizedBox(height: 12.h),
-              _buildAccountInfoRow('전화번호', '김기업123'),
-              SizedBox(height: 12.h),
-              _buildAccountInfoRow('현재 비밀번호', '김기업123'),
-              SizedBox(height: 12.h),
-              _buildAccountInfoRow('새 비밀번호', '김기업123', hasWarning: true, warningText: '비밀번호가 일치하지 않습니다'),
-              SizedBox(height: 12.h),
-              _buildAccountInfoRow('새 비밀번호 확인', '김기업123', hasWarning: true, warningText: '영문+숫자 혼합하여 8자 이상\n비밀번호가 일치하지 않습니다'),
-              SizedBox(height: 16.h),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E3A5F),
-                    borderRadius: BorderRadius.circular(4.r),
-                  ),
-                  child: Text(
-                    '완료',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
+              // Edit/Save 버튼
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      if (_isAccountEditMode) {
+                        _saveAccountInfo();
+                      } else {
+                        setState(() {
+                          _isAccountEditMode = true;
+                        });
+                      }
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                      decoration: BoxDecoration(
+                        color: _isAccountEditMode ? const Color(0xFF1E3A5F) : Colors.grey[200],
+                        borderRadius: BorderRadius.circular(4.r),
+                      ),
+                      child: _isAccountSaving 
+                          ? SizedBox(
+                              width: 16.w,
+                              height: 16.h,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              _isAccountEditMode ? '저장' : '수정',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: _isAccountEditMode ? Colors.white : Colors.black87,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                     ),
                   ),
-                ),
+                  if (_isAccountEditMode)
+                    SizedBox(width: 8.w),
+                  if (_isAccountEditMode)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isAccountEditMode = false;
+                          // Reset controllers to original values
+                          final authViewModel = context.read<AuthViewModel>();
+                          if (authViewModel.currentUser != null) {
+                            _populateAccountFields(authViewModel.currentUser!);
+                          }
+                          _currentPasswordController.clear();
+                          _newPasswordController.clear();
+                          _confirmPasswordController.clear();
+                        });
+                      },
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        child: Text(
+                          '취소',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
+              SizedBox(height: 16.h),
+              
+              // 기업명
+              _buildAccountField('기업명', _accountCompanyNameController.text, 
+                  controller: _accountCompanyNameController, isEditable: false),
+              SizedBox(height: 12.h),
+              
+              // 전화번호
+              _buildAccountField('전화번호', _accountPhoneController.text,
+                  controller: _accountPhoneController, isEditable: _isAccountEditMode),
+              SizedBox(height: 12.h),
+              
+              // 현재 비밀번호 (읽기 모드에서는 ****** 표시, 편집 모드에서는 입력 필드)
+              _buildAccountField('현재 비밀번호', 
+                  _isAccountEditMode ? '' : '******',
+                  controller: _currentPasswordController, 
+                  isEditable: _isAccountEditMode,
+                  isPassword: true,
+                  hintText: _isAccountEditMode ? '현재 비밀번호를 입력하세요' : null),
+              
+              // 편집 모드일 때만 새 비밀번호 필드들 표시
+              if (_isAccountEditMode) ...[
+                SizedBox(height: 12.h),
+                _buildAccountField('새 비밀번호', '',
+                    controller: _newPasswordController, 
+                    isEditable: true,
+                    isPassword: true,
+                    hintText: '새 비밀번호를 입력하세요'),
+                SizedBox(height: 12.h),
+                _buildAccountField('새 비밀번호 확인', '',
+                    controller: _confirmPasswordController, 
+                    isEditable: true,
+                    isPassword: true,
+                    hintText: '새 비밀번호를 다시 입력하세요'),
+              ],
             ],
           ),
         ),
@@ -457,7 +980,12 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _buildAccountInfoRow(String label, String value, {bool hasWarning = false, String? warningText}) {
+  Widget _buildAccountField(String label, String value, {
+    TextEditingController? controller, 
+    bool isEditable = false,
+    bool isPassword = false,
+    String? hintText
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -470,38 +998,55 @@ class _ProfileViewState extends State<ProfileView> {
                 style: TextStyle(
                   fontSize: 14.sp,
                   color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
             Expanded(
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE3F2FD),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
+              child: isEditable && controller != null
+                  ? Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4.r),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: TextFormField(
+                        controller: controller,
+                        obscureText: isPassword,
+                        decoration: InputDecoration(
+                          hintText: hintText,
+                          hintStyle: TextStyle(
+                            fontSize: 14.sp,
+                            color: Colors.grey[400],
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12.w, 
+                            vertical: 8.h
+                          ),
+                        ),
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    )
+                  : Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE3F2FD),
+                        borderRadius: BorderRadius.circular(4.r),
+                      ),
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
-        if (hasWarning && warningText != null)
-          Padding(
-            padding: EdgeInsets.only(top: 4.h, left: 100.w),
-            child: Text(
-              warningText,
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: Colors.red,
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -517,114 +1062,132 @@ class _ProfileViewState extends State<ProfileView> {
         ),
       ),
       children: [
-        Container(
-          padding: EdgeInsets.all(16.w),
-          child: Column(
-            children: [
-              _buildReservationItem('제품광고 - 제품명이 들어갑니다', '2025.03.04', '2025.03.04 ~ 2025.03.09', '결고완'),
-              _buildReservationItem('기업광고', '2025.03.05', '2025.03.07 ~ 2025.03.19', '결고완'),
-              SizedBox(height: 16.h),
-              _buildPagination(),
-            ],
-          ),
-        ),
+        _buildPurchaseHistoryList(),
       ],
     );
   }
 
-  Widget _buildReservationItem(String title, String date1, String date2, String status) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE3F2FD),
-        borderRadius: BorderRadius.circular(8.r),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black,
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Text(
-                  '예약상세',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 8.h),
-          _buildReservationDetailRow('구매일', date1),
-          _buildReservationDetailRow('광고기간', date2),
-          _buildReservationDetailRow('광고상태', status),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildReservationDetailRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 2.h),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 60.w,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12.sp,
-              color: Colors.black87,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildPagination() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          '< 1 2 3 4 5 6 7 8 9 10 >',
+
+
+
+
+  Widget _buildPostsList() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    
+    if (currentUser == null) {
+      return Center(
+        child: Text(
+          '로그인이 필요합니다.',
           style: TextStyle(
             fontSize: 14.sp,
-            color: Colors.black87,
+            color: Colors.grey[600],
           ),
         ),
-      ],
+      );
+    }
+
+    return StreamBuilder<List<PostEntity>>(
+      stream: context.read<PostRepository>().streamUserPosts(currentUser.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          debugPrint('❌ Posts stream error: ${snapshot.error}');
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 48.sp,
+                    color: Colors.red[400],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '게시글을 불러오는 중 오류가 발생했습니다.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    '오류: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {});
+                    },
+                    child: const Text('다시 시도'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final posts = snapshot.data ?? [];
+
+        if (posts.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(40.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.article_outlined,
+                    size: 48.sp,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '등록된 게시글이 없습니다',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    '게시글을 등록하여 제품을 홍보해보세요.',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          children: posts.map((post) => _buildPostItemFromEntity(post)).toList(),
+        );
+      },
     );
   }
 
   Widget _buildPaymentSection() {
     return ExpansionTile(
       title: Text(
-        '계시글',
+        '게시글',
         style: TextStyle(
           fontSize: 16.sp,
           fontWeight: FontWeight.w500,
@@ -634,60 +1197,402 @@ class _ProfileViewState extends State<ProfileView> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE3F2FD),
-              borderRadius: BorderRadius.circular(4.r),
-            ),
-            child: Text(
-              '계시글 등록',
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: const Color(0xFF1E3A5F),
+          GestureDetector(
+            onTap: () {
+              context.push('/post-registration');
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE3F2FD),
+                borderRadius: BorderRadius.circular(4.r),
+              ),
+              child: Text(
+                '게시글 등록',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: const Color(0xFF1E3A5F),
+                ),
               ),
             ),
           ),
           SizedBox(width: 8.w),
-          Icon(Icons.expand_more),
+          const Icon(Icons.expand_more),
         ],
       ),
       children: [
         Container(
           padding: EdgeInsets.all(16.w),
-          child: Column(
-            children: [
-              _buildPostItem(true),
-              _buildPostItem(false),
-              _buildPostItem(false),
-              SizedBox(height: 16.h),
-              _buildPagination(),
-            ],
-          ),
+          child: _buildPostsList(),
         ),
       ],
     );
   }
 
-  Widget _buildPostItem(bool isHighlighted) {
+  Widget _buildPurchaseHistoryList() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    
+    if (currentUser == null) {
+      return Center(
+        child: Text(
+          '로그인이 필요합니다.',
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: Colors.grey[600],
+          ),
+        ),
+      );
+    }
+
+    return StreamBuilder<List<entities.PurchaseEntity>>(
+      stream: context.read<PurchaseRepository>().streamUserPurchases(currentUser.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(40.w),
+              child: const CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          final error = snapshot.error.toString();
+          debugPrint('Purchase history error: $error');
+          
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 48.sp,
+                    color: Colors.red[400],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    error.contains('권한') 
+                        ? '구매 내역에 접근할 권한이 없습니다.'
+                        : error.contains('인덱스')
+                            ? '데이터베이스 인덱스를 준비 중입니다.'
+                            : '구매 내역을 불러오는 중 오류가 발생했습니다.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    error.contains('권한') 
+                        ? '로그아웃 후 다시 로그인해주세요.'
+                        : error.contains('인덱스')
+                            ? '잠시 후 다시 시도해주세요.'
+                            : '네트워크 연결을 확인해주세요.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  ElevatedButton(
+                    onPressed: () {
+                      // 강제로 위젯 새로고침
+                      setState(() {});
+                    },
+                    child: const Text('다시 시도'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final purchases = snapshot.data ?? [];
+        
+        if (purchases.isEmpty) {
+          return Padding(
+            padding: EdgeInsets.all(40.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 80.w,
+                  height: 80.h,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.shopping_cart_outlined,
+                    size: 40.sp,
+                    color: Colors.grey[400],
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                Text(
+                  '구매 내역이 없습니다',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                Text(
+                  '아직 광고를 구매하지 않으셨네요.\n광고를 구매하여 비즈니스를 홍보해보세요!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey[500],
+                    height: 1.5,
+                  ),
+                ),
+                 SizedBox(height: 32.h),
+                 OutlinedButton.icon(
+                   onPressed: () {
+                     setState(() {}); // 새로고침
+                   },
+                   icon: Icon(
+                     Icons.refresh,
+                     size: 16.sp,
+                   ),
+                   label: Text(
+                     '새로고침',
+                     style: TextStyle(
+                       fontSize: 12.sp,
+                       fontWeight: FontWeight.w500,
+                     ),
+                   ),
+                   style: OutlinedButton.styleFrom(
+                     foregroundColor: Colors.grey[600],
+                     side: BorderSide(color: Colors.grey[300]!),
+                     padding: EdgeInsets.symmetric(
+                       horizontal: 16.w, 
+                       vertical: 8.h,
+                     ),
+                     shape: RoundedRectangleBorder(
+                       borderRadius: BorderRadius.circular(6.r),
+                     ),
+                   ),
+                 ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: EdgeInsets.all(16.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '총 ${purchases.length}건의 구매내역',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[600],
+                ),
+              ),
+              SizedBox(height: 12.h),
+              ...purchases.map((purchase) => _buildPurchaseItem(purchase)).toList(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPurchaseItem(entities.PurchaseEntity purchase) {
+    String getAdTypeName(entities.PurchaseType type) {
+      switch (type) {
+        case entities.PurchaseType.basicAd:
+          return '기본 광고';
+        case entities.PurchaseType.premiumAd:
+          return '프리미엄 광고';
+        case entities.PurchaseType.featured:
+          return '추천 광고';
+      }
+    }
+
+    String getStatusName(entities.PurchaseStatus status) {
+      switch (status) {
+        case entities.PurchaseStatus.pending:
+          return '대기 중';
+        case entities.PurchaseStatus.completed:
+          return '완료';
+        case entities.PurchaseStatus.failed:
+          return '실패';
+        case entities.PurchaseStatus.refunded:
+          return '환불';
+      }
+    }
+
+    Color getStatusColor(entities.PurchaseStatus status) {
+      switch (status) {
+        case entities.PurchaseStatus.pending:
+          return Colors.orange;
+        case entities.PurchaseStatus.completed:
+          return Colors.green;
+        case entities.PurchaseStatus.failed:
+          return Colors.red;
+        case entities.PurchaseStatus.refunded:
+          return Colors.grey;
+      }
+    }
+
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
-      padding: EdgeInsets.all(12.w),
+      padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(
-          color: isHighlighted ? const Color(0xFFFF9800) : Colors.grey[300]!,
-          width: isHighlighted ? 1.5 : 1,
-        ),
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.08),
+            spreadRadius: 0,
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: () {
-              context.push(RouteNames.advertisementRegistration);
-            },
-            child: Container(
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  getAdTypeName(purchase.purchaseType),
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                decoration: BoxDecoration(
+                  color: getStatusColor(purchase.status).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Text(
+                  getStatusName(purchase.status),
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: getStatusColor(purchase.status),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '결제 금액',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+              Text(
+                '${purchase.amount.toStringAsFixed(0)}원',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 4.h),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '구매 일시',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+              Text(
+                '${purchase.purchaseDate.year}.${purchase.purchaseDate.month.toString().padLeft(2, '0')}.${purchase.purchaseDate.day.toString().padLeft(2, '0')}',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+          if (purchase.expiryDate != null) ...[
+            SizedBox(height: 4.h),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '만료 일시',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+                Text(
+                  '${purchase.expiryDate!.year}.${purchase.expiryDate!.month.toString().padLeft(2, '0')}.${purchase.expiryDate!.day.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: purchase.expiryDate!.isAfter(DateTime.now()) 
+                        ? Colors.green 
+                        : Colors.red,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPostItemFromEntity(PostEntity post) {
+    return InkWell(
+      onTap: () {
+        // 게시글 상세 보기로 이동
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PostDetailView(post: post),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8.r),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 12.h),
+        padding: EdgeInsets.all(12.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(
+            color: post.isPremium ? const Color(0xFFFF9800) : Colors.grey[300]!,
+            width: post.isPremium ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+        children: [
+          Container(
               width: 60.w,
               height: 60.h,
               decoration: BoxDecoration(
@@ -696,23 +1601,31 @@ class _ProfileViewState extends State<ProfileView> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4.r),
-                child: Image.asset(
-                  'assets/images/sample.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Colors.grey[300],
-                      child: Icon(
-                        Icons.image,
-                        size: 24.sp,
-                        color: Colors.grey[500],
+                child: post.images.isNotEmpty
+                    ? Image.network(
+                        post.images.first,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[300],
+                            child: Icon(
+                              Icons.image,
+                              size: 24.sp,
+                              color: Colors.grey[500],
+                            ),
+                          );
+                        },
+                      )
+                    : Container(
+                        color: Colors.grey[300],
+                        child: Icon(
+                          Icons.image,
+                          size: 24.sp,
+                          color: Colors.grey[500],
+                        ),
                       ),
-                    );
-                  },
-                ),
               ),
             ),
-          ),
           SizedBox(width: 12.w),
           Expanded(
             child: Column(
@@ -729,7 +1642,7 @@ class _ProfileViewState extends State<ProfileView> {
                     ),
                     SizedBox(width: 8.w),
                     Text(
-                      '인쇄 - 패드인쇄',
+                      post.category ?? '미분류',
                       style: TextStyle(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w500,
@@ -740,33 +1653,73 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  '품명 삼영이품',
+                  '품명 ${post.equipmentName ?? post.title}',
                   style: TextStyle(
                     fontSize: 12.sp,
                     color: Colors.grey[600],
                   ),
                 ),
                 Text(
-                  '특징 ' + (isHighlighted ? 'CNC' : '색상이 다양함'),
+                  '특징 ${post.features ?? '특징 정보 없음'}',
                   style: TextStyle(
                     fontSize: 12.sp,
                     color: Colors.grey[600],
                   ),
                 ),
                 Text(
-                  '광고 ' + (isHighlighted ? '2025.03.15 ~ 2025.04.14' : '-'),
+                  '광고 ${post.premiumExpiryDate != null ? '${post.premiumExpiryDate!.year}.${post.premiumExpiryDate!.month.toString().padLeft(2, '0')}.${post.premiumExpiryDate!.day.toString().padLeft(2, '0')}까지' : '-'}',
                   style: TextStyle(
                     fontSize: 12.sp,
                     color: Colors.grey[600],
                   ),
+                ),
+                SizedBox(height: 4.h),
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                      decoration: BoxDecoration(
+                        color: _getPostStatusColor(post.status).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4.r),
+                      ),
+                      child: Text(
+                        _getPostStatusText(post.status),
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w500,
+                          color: _getPostStatusColor(post.status),
+                        ),
+                      ),
+                    ),
+                    if (post.isPremium) ...[
+                      SizedBox(width: 4.w),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        child: Text(
+                          '프리미엄',
+                          style: TextStyle(
+                            fontSize: 10.sp,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
           ),
         ],
       ),
+      ),
     );
   }
+
 
   Widget _buildTermsSection() {
     return ExpansionTile(
@@ -778,94 +1731,567 @@ class _ProfileViewState extends State<ProfileView> {
           color: Colors.black,
         ),
       ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: () {
+              context.push('/inquiry-submission');
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE3F2FD),
+                borderRadius: BorderRadius.circular(4.r),
+              ),
+              child: Text(
+                '1:1 문의 등록',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: const Color(0xFF1E3A5F),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          const Icon(Icons.expand_more),
+        ],
+      ),
       children: [
         Container(
           padding: EdgeInsets.all(16.w),
-          child: Column(
-            children: [
-              _buildTermsItem('제 목', '문의제목111'),
-              _buildTermsItem('문의상태', '답변완료'),
-              _buildTermsItem('내용', '네항 일부분 20글자까지 취합태고 그 이후는 글들하하', isExpanded: true, hasButton: true),
-              SizedBox(height: 16.h),
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '2025.05.01',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          child: _buildInquiryList(),
         ),
       ],
     );
   }
 
-  Widget _buildTermsItem(String label, String value, {bool isExpanded = false, bool hasButton = false}) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 8.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80.w,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: Colors.grey[600],
+  Widget _buildInquiryList() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    
+    if (currentUser == null) {
+      return Center(
+        child: Text(
+          '로그인이 필요합니다.',
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: Colors.grey[600],
+          ),
+        ),
+      );
+    }
+
+    return StreamBuilder<List<InquiryEntity>>(
+      stream: context.read<InquiryRepository>().streamUserInquiries(currentUser.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          debugPrint('❌ Inquiry stream error: ${snapshot.error}');
+          debugPrint('❌ Error type: ${snapshot.error.runtimeType}');
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 48.sp,
+                    color: Colors.red[400],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '문의 내역을 불러오는 중 오류가 발생했습니다.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    '오류: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {});
+                    },
+                    child: const Text('다시 시도'),
+                  ),
+                ],
               ),
             ),
-          ),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(4.r),
-                      border: Border.all(color: Colors.grey[300]!),
+          );
+        }
+
+        final inquiries = snapshot.data ?? [];
+
+        if (inquiries.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.all(40.w),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.help_outline,
+                    size: 48.sp,
+                    color: Colors.grey[400],
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    '등록된 문의가 없습니다',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[700],
                     ),
-                    child: Text(
-                      value,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: Colors.black87,
-                      ),
-                      maxLines: isExpanded ? null : 1,
-                      overflow: isExpanded ? null : TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    '궁금한 점이 있으시면 1:1 문의를 등록해주세요.',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          children: inquiries.map((inquiry) => _buildInquiryItem(inquiry)).toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildInquiryItem(InquiryEntity inquiry) {
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 12.h),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey[300]!),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: InkWell(
+        onTap: () => _showInquiryDetailDialog(inquiry),
+        borderRadius: BorderRadius.circular(8.r),
+        child: ExpansionTile(
+        tilePadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+        title: Text(
+          inquiry.title,
+          style: TextStyle(
+            fontSize: 15.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(height: 4.h),
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(inquiry.status).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4.r),
+                  ),
+                  child: Text(
+                    _getStatusText(inquiry.status),
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w500,
+                      color: _getStatusColor(inquiry.status),
                     ),
                   ),
                 ),
-                if (hasButton) ...[
-                  SizedBox(width: 8.w),
+                SizedBox(width: 8.w),
+                Text(
+                  '${inquiry.createdAt.year}.${inquiry.createdAt.month.toString().padLeft(2, '0')}.${inquiry.createdAt.day.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        children: [
+          Container(
+            padding: EdgeInsets.all(16.w),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '문의 내용',
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(4.r),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Text(
+                    inquiry.content,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.black87,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                if (inquiry.status == InquiryStatus.answered && inquiry.answer != null) ...[
+                  SizedBox(height: 16.h),
+                  Text(
+                    '답변',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.blue[700],
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                    width: double.infinity,
+                    padding: EdgeInsets.all(12.w),
                     decoration: BoxDecoration(
-                      color: Colors.grey[200],
+                      color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(4.r),
+                      border: Border.all(color: Colors.blue[100]!),
                     ),
                     child: Text(
-                      '대화가',
+                      inquiry.answer!,
                       style: TextStyle(
-                        fontSize: 12.sp,
+                        fontSize: 14.sp,
                         color: Colors.black87,
+                        height: 1.5,
                       ),
                     ),
                   ),
+                  if (inquiry.answeredAt != null) ...[
+                    SizedBox(height: 8.h),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '답변일: ${inquiry.answeredAt!.year}.${inquiry.answeredAt!.month.toString().padLeft(2, '0')}.${inquiry.answeredAt!.day.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ),
           ),
         ],
+        ),
       ),
     );
   }
+
+  void _showInquiryDetailDialog(InquiryEntity inquiry) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 헤더
+                Container(
+                  padding: EdgeInsets.all(20.w),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(16.r),
+                      topRight: Radius.circular(16.r),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.help_outline,
+                        color: Colors.blue[700],
+                        size: 24.sp,
+                      ),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              inquiry.title,
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue[700],
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                                  decoration: BoxDecoration(
+                                    color: _getStatusColor(inquiry.status).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4.r),
+                                  ),
+                                  child: Text(
+                                    _getStatusText(inquiry.status),
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w500,
+                                      color: _getStatusColor(inquiry.status),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8.w),
+                                Text(
+                                  '${inquiry.createdAt.year}.${inquiry.createdAt.month.toString().padLeft(2, '0')}.${inquiry.createdAt.day.toString().padLeft(2, '0')}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // 내용
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(20.w),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 문의 내용
+                        Text(
+                          '문의 내용',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        SizedBox(height: 12.h),
+                        Container(
+                          width: double.infinity,
+                          padding: EdgeInsets.all(16.w),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8.r),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Text(
+                            inquiry.content,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: Colors.black87,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                        
+                        // 답변 내용
+                        if (inquiry.status == InquiryStatus.answered && inquiry.answer != null) ...[
+                          SizedBox(height: 24.h),
+                          Text(
+                            '답변',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                          SizedBox(height: 12.h),
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(16.w),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[50],
+                              borderRadius: BorderRadius.circular(8.r),
+                              border: Border.all(color: Colors.blue[100]!),
+                            ),
+                            child: Text(
+                              inquiry.answer!,
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: Colors.black87,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                          if (inquiry.answeredAt != null) ...[
+                            SizedBox(height: 8.h),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '답변일: ${inquiry.answeredAt!.year}.${inquiry.answeredAt!.month.toString().padLeft(2, '0')}.${inquiry.answeredAt!.day.toString().padLeft(2, '0')}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ] else if (inquiry.status == InquiryStatus.pending) ...[
+                          SizedBox(height: 24.h),
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.all(16.w),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[50],
+                              borderRadius: BorderRadius.circular(8.r),
+                              border: Border.all(color: Colors.orange[100]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.access_time,
+                                  color: Colors.orange[600],
+                                  size: 20.sp,
+                                ),
+                                SizedBox(width: 8.w),
+                                Text(
+                                  '답변을 기다리고 있습니다.',
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    color: Colors.orange[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // 하단 버튼
+                Container(
+                  padding: EdgeInsets.all(20.w),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(
+                          '닫기',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _getStatusText(InquiryStatus status) {
+    switch (status) {
+      case InquiryStatus.pending:
+        return '답변 대기중';
+      case InquiryStatus.answered:
+        return '답변 완료';
+      case InquiryStatus.closed:
+        return '종료';
+    }
+  }
+
+  Color _getStatusColor(InquiryStatus status) {
+    switch (status) {
+      case InquiryStatus.pending:
+        return Colors.orange;
+      case InquiryStatus.answered:
+        return Colors.green;
+      case InquiryStatus.closed:
+        return Colors.grey;
+    }
+  }
+
+  String _getPostStatusText(PostStatus status) {
+    switch (status) {
+      case PostStatus.draft:
+        return '임시저장';
+      case PostStatus.published:
+        return '게시중';
+      case PostStatus.hidden:
+        return '숨김';
+      case PostStatus.deleted:
+        return '삭제됨';
+    }
+  }
+
+  Color _getPostStatusColor(PostStatus status) {
+    switch (status) {
+      case PostStatus.draft:
+        return Colors.grey;
+      case PostStatus.published:
+        return Colors.green;
+      case PostStatus.hidden:
+        return Colors.orange;
+      case PostStatus.deleted:
+        return Colors.red;
+    }
+  }
+
 
   Widget _buildOtherSection() {
     return Container(
@@ -916,357 +2342,11 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
-  Widget _buildTextField(String label, String hint, {bool isRequired = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w500,
-                color: Colors.black,
-              ),
-            ),
-            if (isRequired)
-              Text(
-                ' *',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Colors.red,
-                ),
-              ),
-          ],
-        ),
-        SizedBox(height: 8.h),
-        TextFormField(
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.grey[500],
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: BorderSide(color: Colors.grey[300]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: BorderSide(color: Colors.grey[300]!),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8.r),
-              borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-            ),
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 16.w,
-              vertical: 12.h,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  
 
-  Widget _buildAddressSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '기업주소',
-          style: TextStyle(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w500,
-            color: Colors.black,
-          ),
-        ),
-        SizedBox(height: 8.h),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _addressController,
-                decoration: InputDecoration(
-                  hintText: '기업주소를 입력해주세요',
-                  hintStyle: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.grey[500],
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.r),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.r),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.r),
-                    borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 12.h,
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: 8.w),
-            Container(
-              height: 48.h,
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8.r),
-                border: Border.all(color: Colors.grey[300]!),
-              ),
-              child: Center(
-                child: Text(
-                  '검색',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
 
-  Widget _buildGenderSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '연혁',
-          style: TextStyle(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w500,
-            color: Colors.black,
-          ),
-        ),
-        SizedBox(height: 8.h),
-        ...historyItems.asMap().entries.map((entry) {
-          int index = entry.key;
-          return Padding(
-            padding: EdgeInsets.only(bottom: 12.h),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    decoration: InputDecoration(
-                      hintText: '년도 입력',
-                      hintStyle: TextStyle(
-                        fontSize: 14.sp,
-                        color: Colors.grey[500],
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: TextFormField(
-                    decoration: InputDecoration(
-                      hintText: '연혁 내용을 입력해주세요',
-                      hintStyle: TextStyle(
-                        fontSize: 14.sp,
-                        color: Colors.grey[500],
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ],
-    );
-  }
 
-  Widget _buildAddressUpdateSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              historyItems.add({'year': '', 'content': ''});
-            });
-          },
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(16.w),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E3A5F),
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: Center(
-              child: Text(
-                '연혁 추가하기',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildAddressRegistrationSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '주요거래처',
-          style: TextStyle(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w500,
-            color: Colors.black,
-          ),
-        ),
-        SizedBox(height: 8.h),
-        ...partnerItems.asMap().entries.map((entry) {
-          int index = entry.key;
-          return Padding(
-            padding: EdgeInsets.only(bottom: 12.h),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    decoration: InputDecoration(
-                      hintText: '거래처명',
-                      hintStyle: TextStyle(
-                        fontSize: 14.sp,
-                        color: Colors.grey[500],
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: TextFormField(
-                    decoration: InputDecoration(
-                      hintText: '기타 사항 입력',
-                      hintStyle: TextStyle(
-                        fontSize: 14.sp,
-                        color: Colors.grey[500],
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.r),
-                        borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              partnerItems.add({'name': '', 'details': ''});
-            });
-          },
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(16.w),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE3F2FD),
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.add,
-                  color: const Color(0xFF1E3A5F),
-                  size: 20.sp,
-                ),
-                SizedBox(width: 8.w),
-                Text(
-                  '주요 거래처 추가',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: const Color(0xFF1E3A5F),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildSpecialNoteSection() {
     return Column(
@@ -1477,25 +2557,7 @@ class _ProfileViewState extends State<ProfileView> {
                         ],
                       ),
                     ),
-                    SizedBox(height: 20.h),
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(16.w),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A5F),
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '완료',
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
+                    // 하단 완료 버튼 제거 (전체 저장 버튼으로 일원화)
                   ],
                 ),
               ),
@@ -1539,6 +2601,13 @@ class _ProfileViewState extends State<ProfileView> {
           context.go('/main');
         } else if (label == '좋아요') {
           context.go('/favorites');
+        } else if (label == '되돌가기') {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            // 루트에서도 비활성화하지 않고 메인으로 이동
+            context.go('/main');
+          }
         }
       },
       child: Column(
@@ -1574,7 +2643,7 @@ class _ProfileViewState extends State<ProfileView> {
   }
   
   // New methods for backend integration
-  Widget _buildTextFieldWithController(String label, String hint, TextEditingController controller, {bool isRequired = false}) {
+  Widget _buildTextFieldWithController(String label, String hint, TextEditingController controller, {bool isRequired = false, bool readOnly = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1601,6 +2670,7 @@ class _ProfileViewState extends State<ProfileView> {
         SizedBox(height: 8.h),
         TextFormField(
           controller: controller,
+          readOnly: readOnly,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(
@@ -1623,84 +2693,114 @@ class _ProfileViewState extends State<ProfileView> {
               horizontal: 16.w,
               vertical: 12.h,
             ),
+            fillColor: readOnly ? Colors.grey[50] : Colors.white,
+            filled: readOnly,
           ),
         ),
       ],
     );
   }
   
-  Widget _buildPasswordField(String label, TextEditingController controller, {bool isPassword = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              width: 120.w,
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-            Expanded(
-              child: TextFormField(
-                controller: controller,
-                obscureText: isPassword,
-                decoration: InputDecoration(
-                  hintText: '입력해주세요',
-                  hintStyle: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.grey[500],
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4.r),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4.r),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4.r),
-                    borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12.w,
-                    vertical: 8.h,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+
   
-  void _saveCompanyInfo() async {
-    if (_formKey.currentState?.validate() ?? false) {
-      // TODO: Implement company info save
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('기업 정보가 저장되었습니다.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+  Future<void> _saveAccountInfo() async {
+    if (_isAccountSaving) return;
+    
+    setState(() {
+      _isAccountSaving = true;
+    });
+    
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception('사용자가 로그인되지 않았습니다.');
+      }
+      
+      // 비밀번호 변경이 요청된 경우
+      if (_newPasswordController.text.isNotEmpty) {
+        // 비밀번호 검증
+        if (_currentPasswordController.text.isEmpty) {
+          throw Exception('현재 비밀번호를 입력해주세요.');
+        }
+        
+        if (_newPasswordController.text != _confirmPasswordController.text) {
+          throw Exception('새 비밀번호가 일치하지 않습니다.');
+        }
+        
+        if (_newPasswordController.text.length < 8) {
+          throw Exception('새 비밀번호는 8자 이상이어야 합니다.');
+        }
+        
+        // Firebase Authentication으로 비밀번호 재인증
+        final credential = EmailAuthProvider.credential(
+          email: currentUser.email!,
+          password: _currentPasswordController.text,
+        );
+        
+        await currentUser.reauthenticateWithCredential(credential);
+        await currentUser.updatePassword(_newPasswordController.text);
+      }
+      
+      // 전화번호 업데이트
+      Map<String, dynamic> updateData = {};
+      if (_accountPhoneController.text.trim() != currentUser.phoneNumber) {
+        updateData['phone'] = _accountPhoneController.text.trim();
+      }
+      
+      // Firestore users 컬렉션 업데이트
+      if (updateData.isNotEmpty) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .update(updateData);
+      }
+      
+      // 성공 메시지
+      if (mounted) {
+        setState(() {
+          _isAccountEditMode = false;
+          _isAccountSaving = false;
+        });
+        
+        // 비밀번호 필드 초기화
+        _currentPasswordController.clear();
+        _newPasswordController.clear();
+        _confirmPasswordController.clear();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('계정 정보가 성공적으로 저장되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAccountSaving = false;
+        });
+        
+        String errorMessage = '계정 정보 저장 중 오류가 발생했습니다.';
+        if (e.toString().contains('wrong-password')) {
+          errorMessage = '현재 비밀번호가 올바르지 않습니다.';
+        } else if (e.toString().contains('weak-password')) {
+          errorMessage = '새 비밀번호가 너무 약합니다.';
+        } else if (e.toString().contains('Exception:')) {
+          errorMessage = e.toString().replaceFirst('Exception: ', '');
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
   
-  void _changePassword() async {
-    // TODO: Implement password change functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('비밀번호 변경 기능은 추후 구현 예정입니다.'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
+
   
   void _logout() async {
     try {
@@ -1747,7 +2847,6 @@ class _ProfileViewState extends State<ProfileView> {
   
   void _deleteAccount() async {
     try {
-      final authViewModel = context.read<AuthViewModel>();
       // TODO: Implement account deletion
       // await authViewModel.deleteAccount();
       
@@ -1768,4 +2867,705 @@ class _ProfileViewState extends State<ProfileView> {
       );
     }
   }
+  
+  // Edit/Save button
+  Widget _buildEditSaveButton() {
+    if (!_isEditMode) {
+      // Show "수정" button only when not in edit mode
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
+        child: SizedBox(
+          width: double.infinity,
+          height: 48.h,
+          child: ElevatedButton(
+            onPressed: _enableEditMode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E3A5F),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              '수정',
+              style: TextStyle(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Show "완료" button only in edit mode
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
+      child: SizedBox(
+        width: double.infinity,
+        height: 48.h,
+        child: ElevatedButton(
+          onPressed: _isSaving ? null : _saveCompanyData,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1E3A5F),
+            disabledBackgroundColor: Colors.grey[300],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            elevation: 0,
+          ),
+          child: _isSaving
+              ? SizedBox(
+                  width: 20.sp,
+                  height: 20.sp,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  '완료',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  void _enableEditMode() {
+    setState(() {
+      _isEditMode = true;
+    });
+  }
+
+  // Company images section
+  Widget _buildCompanyImagesSection() {
+    if (_companyData == null) return SizedBox();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '회사 이미지',
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 12.h),
+        Row(
+          children: [
+            // Company Photo
+            Expanded(
+              child: _buildImageContainer(
+                title: '회사사진',
+                imageUrl: _companyData!['photo'],
+                height: 120.h,
+              ),
+            ),
+            SizedBox(width: 16.w),
+            // Company Logo
+            Expanded(
+              child: _buildImageContainer(
+                title: '회사로고',
+                imageUrl: _companyData!['logo'],
+                height: 120.h,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 16.h),
+        // Business License
+        _buildImageContainer(
+          title: '사업자등록증',
+          imageUrl: _companyData!['businessLicenseImage'],
+          height: 200.h,
+          fullWidth: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImageContainer({
+    required String title,
+    String? imageUrl,
+    required double height,
+    bool fullWidth = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Container(
+          width: fullWidth ? double.infinity : null,
+          height: height,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8.r),
+            color: Colors.grey[50],
+          ),
+          child: imageUrl != null && imageUrl.isNotEmpty
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8.r),
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 32.sp,
+                              color: Colors.grey[400],
+                            ),
+                            SizedBox(height: 8.h),
+                            Text(
+                              '이미지 로드 실패',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                )
+              : Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.image_outlined,
+                        size: 32.sp,
+                        color: Colors.grey[400],
+                      ),
+                      SizedBox(height: 8.h),
+                      Text(
+                        '이미지 없음',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _saveCompanyData() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        throw Exception('사용자가 로그인되지 않았습니다.');
+      }
+
+      // Prepare updated company data
+      final updatedData = {
+        'companyName': _companyNameController.text.trim(),
+        'ceoName': _ceoNameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'address': _addressController.text.trim(),
+        'detailAddress': _detailAddressController.text.trim(),
+        'website': _websiteController.text.trim().isEmpty ? null : _websiteController.text.trim(),
+        'greeting': _greetingController.text.trim().isEmpty ? null : _greetingController.text.trim(),
+        'features': _featuresController.text.trim().isEmpty ? null : _featuresController.text.trim(),
+        'category': _selectedCategory,
+        'subcategory': _selectedSubcategory,
+        'subSubcategory': _selectedSubSubcategory,
+        'history': historyItems.map((item) => {
+          'year': item['year'] ?? '',
+          'content': item['content'] ?? '',
+        }).where((item) => item['year']!.isNotEmpty || item['content']!.isNotEmpty).toList(),
+        'clients': partnerItems.map((item) => {
+          'name': item['name'] ?? '',
+          'details': item['details'] ?? '',
+        }).where((item) => item['name']!.isNotEmpty || item['details']!.isNotEmpty).toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Update Firestore document
+      await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(currentUser.uid)
+          .update(updatedData);
+
+      // Update local data
+      setState(() {
+        _companyData = {..._companyData!, ...updatedData};
+        _isEditMode = false;
+        _isSaving = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('기업 정보가 성공적으로 업데이트되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isSaving = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('업데이트 실패: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Edit mode sections
+  Widget _buildCategoryEditSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '업종',
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        DropdownButtonFormField<String>(
+          value: _isValidCategory(_selectedCategory) ? _selectedCategory : null,
+          decoration: InputDecoration(
+            hintText: '업종을 선택해주세요',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+          ),
+          items: _categories.map((category) {
+            return DropdownMenuItem(
+              value: category.title,
+              child: Text(category.title),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              _selectedCategory = value;
+              _selectedSubcategory = null; // 카테고리 변경 시 세부카테고리 초기화
+              _selectedSubSubcategory = null;
+            });
+          },
+        ),
+        SizedBox(height: 16.h),
+        Text(
+          '세부업종',
+          style: TextStyle(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        DropdownButtonFormField<String>(
+          value: _isValidSubcategory(_selectedSubcategory) ? _selectedSubcategory : null,
+          decoration: InputDecoration(
+            hintText: '세부업종을 선택해주세요',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+          ),
+          items: _buildItemsWithDividers(_getSubcategoriesForSelectedCategory()),
+          onChanged: (value) {
+            setState(() {
+              _selectedSubcategory = value;
+              _selectedSubSubcategory = null;
+            });
+          },
+        ),
+        SizedBox(height: 16.h),
+        if (_selectedCategory != null &&
+            _selectedSubcategory != null &&
+            CategoryData.hasSubSubcategories(_selectedCategory!, _selectedSubcategory!)) ...[
+          Text(
+            '3차 세부업종',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          DropdownButtonFormField<String>(
+            value: _isValidSubSubcategory(_selectedSubSubcategory) ? _selectedSubSubcategory : null,
+            decoration: InputDecoration(
+              hintText: '3차 세부업종을 선택해주세요 (선택)',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+            ),
+            items: _buildItemsWithDividers(_getSubSubcategoriesForSelected()),
+            onChanged: (value) {
+              setState(() {
+                _selectedSubSubcategory = value;
+              });
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildHistoryEditSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '연혁',
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        ...historyItems.asMap().entries.map((entry) {
+          final index = entry.key;
+          final item = entry.value;
+          return Container(
+            margin: EdgeInsets.only(bottom: 8.h),
+            padding: EdgeInsets.all(12.w),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 60.w,
+                  child: TextFormField(
+                    initialValue: item['year'] ?? '',
+                    onChanged: (value) => item['year'] = value,
+                    decoration: const InputDecoration(
+                      hintText: 'YYYY',
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(fontSize: 14.sp),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: TextFormField(
+                    initialValue: item['content'] ?? '',
+                    onChanged: (value) => item['content'] = value,
+                    decoration: const InputDecoration(
+                      hintText: '연혁 내용을 입력하세요',
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: TextStyle(fontSize: 14.sp),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                  onPressed: () {
+                    setState(() {
+                      historyItems.removeAt(index);
+                    });
+                  },
+                ),
+              ],
+            ),
+          );
+        }),
+        SizedBox(height: 8.h),
+        OutlinedButton.icon(
+          onPressed: () {
+            setState(() {
+              historyItems.add({'year': '', 'content': ''});
+            });
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('연혁 추가'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildClientsEditSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '주요거래처',
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        ...partnerItems.asMap().entries.map((entry) {
+          final index = entry.key;
+          final item = entry.value;
+          return Container(
+            margin: EdgeInsets.only(bottom: 8.h),
+            padding: EdgeInsets.all(12.w),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: item['name'] ?? '',
+                        onChanged: (value) => item['name'] = value,
+                        decoration: const InputDecoration(
+                          hintText: '거래처명',
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          partnerItems.removeAt(index);
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                TextFormField(
+                  initialValue: item['details'] ?? '',
+                  onChanged: (value) => item['details'] = value,
+                  decoration: const InputDecoration(
+                    hintText: '거래 상세내용',
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                  maxLines: 2,
+                  style: TextStyle(fontSize: 13.sp),
+                ),
+              ],
+            ),
+          );
+        }),
+        SizedBox(height: 8.h),
+        OutlinedButton.icon(
+          onPressed: () {
+            setState(() {
+              partnerItems.add({'name': '', 'details': ''});
+            });
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('거래처 추가'),
+        ),
+      ],
+    );
+  }
+
+  // Display methods for existing UI structure
+  Widget _buildCategoryDisplaySection() {
+    if (_companyData == null) return SizedBox();
+    
+    final category = _companyData!['category']?.toString() ?? '';
+    final subcategory = _companyData!['subcategory']?.toString() ?? '';
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '업종',
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey[300]!),
+            borderRadius: BorderRadius.circular(8.r),
+            color: Colors.grey[50],
+          ),
+          child: Text(
+            '$category > $subcategory',
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildHistoryDisplaySection() {
+    if (_companyData == null || _companyData!['history'] == null || (_companyData!['history'] as List).isEmpty) {
+      return SizedBox();
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '연혁',
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        ...(_companyData!['history'] as List<dynamic>).map((item) {
+          return Container(
+            margin: EdgeInsets.only(bottom: 8.h),
+            padding: EdgeInsets.all(12.w),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8.r),
+              color: Colors.grey[50],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 60.w,
+                  child: Text(
+                    item['year']?.toString() ?? '',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1E3A5F),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    item['content']?.toString() ?? '',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ],
+    );
+  }
+  
+  Widget _buildClientsDisplaySection() {
+    if (_companyData == null || _companyData!['clients'] == null || (_companyData!['clients'] as List).isEmpty) {
+      return SizedBox();
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '주요거래처',
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w500,
+            color: Colors.black,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        ...(_companyData!['clients'] as List<dynamic>).map((item) {
+          return Container(
+            margin: EdgeInsets.only(bottom: 8.h),
+            padding: EdgeInsets.all(12.w),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8.r),
+              color: Colors.grey[50],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name']?.toString() ?? '',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+                if (item['details'] != null && item['details'].toString().isNotEmpty) ...[
+                  SizedBox(height: 4.h),
+                  Text(
+                    item['details'].toString(),
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }).toList(),
+      ],
+    );
+  }
+
+
 }

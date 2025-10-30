@@ -2,6 +2,10 @@
     <!-- Internet permission for Kakao Login -->
     <uses-permission android:name="android.permission.INTERNET" />
     
+    <!-- Location permissions for Google Maps -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
     <application
         android:label="vendor_ads"
         android:name="${applicationName}"
@@ -50,6 +54,28 @@
         <activity
             android:name="com.nhn.android.naverlogin.ui.view.OAuthLoginInAppBrowserActivity"
             android:label="OAuth2.0 In-app" />
+        
+        <!-- Naver Login Configuration -->
+        <meta-data
+            android:name="com.naver.sdk.clientId"
+            android:value="@string/naver_client_id" />
+        <meta-data
+            android:name="com.naver.sdk.clientSecret"
+            android:value="@string/naver_client_secret" />
+        <meta-data
+            android:name="com.naver.sdk.clientName"
+            android:value="@string/naver_client_name" />
+            
+        <!-- Google Maps API Key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyAQaAqDNxtkH0D_tPv39VtqIzn9dgZnViA" />
+            
+        <!-- Google Mobile Ads Configuration -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-8455118855307052~4986340938" />
+            
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

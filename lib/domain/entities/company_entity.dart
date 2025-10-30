@@ -7,11 +7,16 @@ class CompanyEntity {
   final String detailAddress;
   final String category;
   final String subcategory;
+  final String? subSubcategory;
+  final double? latitude;
+  final double? longitude;
   final String? website;
   final String? greeting;
   final List<String> photos;
   final String? logo;
   final double adPayment;
+  final bool isPremium;
+  final bool isVerified;
   final DateTime createdAt;
   final DateTime? adExpiryDate;
 
@@ -24,11 +29,16 @@ class CompanyEntity {
     required this.detailAddress,
     required this.category,
     required this.subcategory,
+    this.subSubcategory,
+    this.latitude,
+    this.longitude,
     this.website,
     this.greeting,
     required this.photos,
     this.logo,
     required this.adPayment,
+    this.isPremium = false,
+    required this.isVerified,
     required this.createdAt,
     this.adExpiryDate,
   });
@@ -42,11 +52,16 @@ class CompanyEntity {
     String? detailAddress,
     String? category,
     String? subcategory,
+    String? subSubcategory,
+    double? latitude,
+    double? longitude,
     String? website,
     String? greeting,
     List<String>? photos,
     String? logo,
     double? adPayment,
+    bool? isPremium,
+    bool? isVerified,
     DateTime? createdAt,
     DateTime? adExpiryDate,
   }) {
@@ -59,11 +74,16 @@ class CompanyEntity {
       detailAddress: detailAddress ?? this.detailAddress,
       category: category ?? this.category,
       subcategory: subcategory ?? this.subcategory,
+      subSubcategory: subSubcategory ?? this.subSubcategory,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       website: website ?? this.website,
       greeting: greeting ?? this.greeting,
       photos: photos ?? this.photos,
       logo: logo ?? this.logo,
       adPayment: adPayment ?? this.adPayment,
+      isPremium: isPremium ?? this.isPremium,
+      isVerified: isVerified ?? this.isVerified,
       createdAt: createdAt ?? this.createdAt,
       adExpiryDate: adExpiryDate ?? this.adExpiryDate,
     );
@@ -82,11 +102,16 @@ class CompanyEntity {
         other.detailAddress == detailAddress &&
         other.category == category &&
         other.subcategory == subcategory &&
+        other.subSubcategory == subSubcategory &&
+        other.latitude == latitude &&
+        other.longitude == longitude &&
         other.website == website &&
         other.greeting == greeting &&
         _listEquals(other.photos, photos) &&
         other.logo == logo &&
         other.adPayment == adPayment &&
+        other.isPremium == isPremium &&
+        other.isVerified == isVerified &&
         other.createdAt == createdAt &&
         other.adExpiryDate == adExpiryDate;
   }
@@ -101,11 +126,16 @@ class CompanyEntity {
         detailAddress.hashCode ^
         category.hashCode ^
         subcategory.hashCode ^
+        subSubcategory.hashCode ^
+        latitude.hashCode ^
+        longitude.hashCode ^
         website.hashCode ^
         greeting.hashCode ^
         photos.hashCode ^
         logo.hashCode ^
         adPayment.hashCode ^
+        isPremium.hashCode ^
+        isVerified.hashCode ^
         createdAt.hashCode ^
         adExpiryDate.hashCode;
   }

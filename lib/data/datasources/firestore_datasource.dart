@@ -4,6 +4,7 @@ import '../models/company_model.dart';
 import '../models/payment_model.dart';
 import '../models/inquiry_model.dart';
 import '../models/post_model.dart';
+import '../models/favorite_model.dart';
 
 abstract class FirestoreDataSource {
   // User operations
@@ -18,6 +19,7 @@ abstract class FirestoreDataSource {
   Future<List<CompanyModel>> getCompanies({
     String? category,
     String? subcategory,
+    String? subSubcategory,
     String? region,
     int? limit,
     String? orderBy,
@@ -53,6 +55,13 @@ abstract class FirestoreDataSource {
   Future<void> updatePost(PostModel post);
   Future<void> deletePost(String postId);
   Future<void> incrementPostViewCount(String postId);
+  Stream<List<PostModel>> streamUserPosts(String userId);
+
+  // Favorite operations
+  Future<void> addFavorite(FavoriteModel favorite);
+  Future<void> removeFavorite(String userId, String companyId);
+  Future<List<FavoriteModel>> getFavoritesByUser(String userId);
+  Future<bool> isFavorite(String userId, String companyId);
 }
 
 class FirestoreDataSourceImpl implements FirestoreDataSource {
@@ -67,6 +76,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
   CollectionReference get _paymentsCollection => _firestore.collection('payments');
   CollectionReference get _inquiriesCollection => _firestore.collection('inquiries');
   CollectionReference get _postsCollection => _firestore.collection('posts');
+  CollectionReference get _favoritesCollection => _firestore.collection('favorites');
 
   // User operations
   @override
@@ -132,6 +142,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
   Future<List<CompanyModel>> getCompanies({
     String? category,
     String? subcategory,
+    String? subSubcategory,
     String? region,
     int? limit,
     String? orderBy,
@@ -140,23 +151,37 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
     try {
       Query query = _companiesCollection;
 
-      if (category != null) {
-        query = query.where('category', isEqualTo: category);
-      }
-      if (subcategory != null) {
-        query = query.where('subcategory', isEqualTo: subcategory);
-      }
-      if (region != null) {
-        query = query.where('region', isEqualTo: region);
-      }
+      print('🔍 FirestoreDataSource: Loading companies with filters');
+      print('🔍 Parameters - category: $category, subcategory: $subcategory, subSubcategory: $subSubcategory');
+      
+      // 카테고리 필터는 클라이언트 사이드에서 적용 (Firestore 필드 매칭 문제 방지)
+      // Firestore 쿼리는 최소한의 필터만 적용
+      
+      // orderBy는 필터 없이 먼저 시도
       if (orderBy != null) {
-        query = query.orderBy(orderBy, descending: descending);
+        try {
+          query = query.orderBy(orderBy, descending: descending);
+        } catch (e) {
+          // 인덱스 오류 시 orderBy 생략 (클라이언트에서 정렬)
+          print('⚠️ FirestoreDataSource: orderBy 실패 (인덱스 없음), 클라이언트에서 정렬: $e');
+        }
       }
-      if (limit != null) {
-        query = query.limit(limit);
+      
+      // 클라이언트에서 필터링하기 위해 충분히 많이 가져옴 (limit이 있어도 더 많이)
+      if (limit != null && limit > 0) {
+        // 충분히 많이 가져와서 클라이언트에서 필터링 후 limit 적용
+        query = query.limit(limit * 10); // 안전하게 충분히 많이
+      } else {
+        // limit이 없으면 기본값 설정 (너무 많으면 문제)
+        query = query.limit(200);
       }
 
       final snapshot = await query.get();
+      print('🔍 FirestoreDataSource: Found ${snapshot.docs.length} companies');
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        print('🔍 Company: ${data['companyName']} - Category: ${data['category']} - Subcategory: ${data['subcategory']}');
+      }
       return snapshot.docs.map((doc) => 
         CompanyModel.fromJson(doc.data() as Map<String, dynamic>)
       ).toList();
@@ -164,6 +189,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
       throw Exception('기업 목록 조회 실패: $e');
     }
   }
+
 
   @override
   Future<void> updateCompany(CompanyModel company) async {
@@ -181,6 +207,29 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
     } catch (e) {
       throw Exception('기업 삭제 실패: $e');
     }
+  }
+
+  // 카테고리 이름 정규화 (Firebase에 저장된 형태로 변환)
+  // 현재는 클라이언트 사이드 필터링을 사용하므로 미사용
+  // @deprecated Firestore 필터링 활성화 시 사용
+  @Deprecated('클라이언트 사이드 필터링 사용 중')
+  String _normalizeCategoryName(String category) {
+    // Firebase에 저장된 카테고리 이름 매핑 (실제 Firebase 데이터 기준)
+    final categoryMapping = {
+      '*금형\n*3D 프린터': '*금형 *3D 프린터', // 줄바꿈을 공백으로 변환
+      '사출\n(공병, 플라스틱 등)': '사출\n(공병, 플라스틱 등)',
+      '*표면처리\n*건조기\n(열,UV,LED)': '*표면처리\n*건조기\n(열,UV,LED)',
+      '*Vision\n(비전)\n*Robot\n(무인화)': '*Vision\n(비전)\n*Robot\n(무인화)',
+      '*유공압\n*모터': '*유공압\n*모터',
+      // 추가 매핑 (실제 Firebase 데이터와 일치하도록)
+      '기계 제작': '기계 제작',
+      '인쇄': '인쇄',
+      '공구 MALL': '공구 MALL',
+    };
+    
+    final normalized = categoryMapping[category] ?? category;
+    print('🔍 Category normalization: "$category" -> "$normalized"');
+    return normalized;
   }
 
   // Payment operations
@@ -317,7 +366,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
     try {
       final doc = await _postsCollection.doc(postId).get();
       if (!doc.exists) return null;
-      return PostModel.fromJson(doc.data() as Map<String, dynamic>);
+      return PostModel.fromJson({...(doc.data() as Map<String, dynamic>), 'id': doc.id});
     } catch (e) {
       throw Exception('게시글 조회 실패: $e');
     }
@@ -331,7 +380,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
           .orderBy('createdAt', descending: true)
           .get();
       return snapshot.docs.map((doc) => 
-        PostModel.fromJson(doc.data() as Map<String, dynamic>)
+        PostModel.fromJson({...(doc.data() as Map<String, dynamic>), 'id': doc.id})
       ).toList();
     } catch (e) {
       throw Exception('기업 게시글 목록 조회 실패: $e');
@@ -361,7 +410,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
 
       final snapshot = await query.get();
       return snapshot.docs.map((doc) => 
-        PostModel.fromJson(doc.data() as Map<String, dynamic>)
+        PostModel.fromJson({...(doc.data() as Map<String, dynamic>), 'id': doc.id})
       ).toList();
     } catch (e) {
       throw Exception('게시글 목록 조회 실패: $e');
@@ -395,6 +444,150 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
       });
     } catch (e) {
       throw Exception('게시글 조회수 증가 실패: $e');
+    }
+  }
+
+  // Favorite operations
+  @override
+  Future<void> addFavorite(FavoriteModel favorite) async {
+    try {
+      await _favoritesCollection.doc(favorite.id).set(favorite.toJson());
+    } catch (e) {
+      throw Exception('좋아요 추가 실패: $e');
+    }
+  }
+
+  @override
+  Future<void> removeFavorite(String userId, String companyId) async {
+    try {
+      final snapshot = await _favoritesCollection
+          .where('userId', isEqualTo: userId)
+          .where('companyId', isEqualTo: companyId)
+          .get();
+      
+      for (final doc in snapshot.docs) {
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      throw Exception('좋아요 제거 실패: $e');
+    }
+  }
+
+  @override
+  Future<List<FavoriteModel>> getFavoritesByUser(String userId) async {
+    try {
+      final snapshot = await _favoritesCollection
+          .where('userId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      return snapshot.docs.map((doc) => 
+        FavoriteModel.fromJson(doc.data() as Map<String, dynamic>)
+      ).toList();
+    } catch (e) {
+      throw Exception('좋아요 목록 조회 실패: $e');
+    }
+  }
+
+  @override
+  Future<bool> isFavorite(String userId, String companyId) async {
+    try {
+      final snapshot = await _favoritesCollection
+          .where('userId', isEqualTo: userId)
+          .where('companyId', isEqualTo: companyId)
+          .get();
+      
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      throw Exception('좋아요 상태 확인 실패: $e');
+    }
+  }
+
+  @override
+  Stream<List<PostModel>> streamUserPosts(String userId) {
+    try {
+      print('🔍 StreamUserPosts in datasource called for userId: $userId');
+      
+      // 먼저 userId로 조회
+      return _postsCollection
+          .where('companyId', isEqualTo: userId)
+          .snapshots()
+          .asyncMap((snapshot) async {
+            print('📊 Posts snapshot received: ${snapshot.docs.length} documents');
+            
+            // userId로 조회한 결과가 없으면 "unknown"으로도 조회 (기존 데이터 호환성)
+            if (snapshot.docs.isEmpty) {
+              print('⚠️ No posts found with companyId: $userId, trying "unknown"');
+              final unknownSnapshot = await _postsCollection
+                  .where('companyId', isEqualTo: 'unknown')
+                  .get();
+              print('📊 Unknown posts found: ${unknownSnapshot.docs.length} documents');
+              
+              final allDocs = <QueryDocumentSnapshot>[];
+              allDocs.addAll(snapshot.docs);
+              allDocs.addAll(unknownSnapshot.docs);
+              
+              final posts = allDocs.map((doc) {
+                try {
+                  print('📄 Processing post doc: ${doc.id}');
+                  final data = doc.data() as Map<String, dynamic>;
+                  print('📄 Post data: $data');
+                  return PostModel.fromJson({...data, 'id': doc.id});
+                } catch (e) {
+                  print('❌ Error processing post doc ${doc.id}: $e');
+                  print('📄 Doc data: ${doc.data()}');
+                  return null;
+                }
+              }).where((post) => post != null).cast<PostModel>().toList();
+              
+              // 클라이언트 사이드에서 정렬
+              posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+              return posts;
+            }
+            
+            // userId로 조회한 결과가 있으면 그대로 반환
+            return snapshot.docs.map((doc) {
+              try {
+                print('📄 Processing post doc: ${doc.id}');
+                final data = doc.data() as Map<String, dynamic>;
+                print('📄 Post data: $data');
+                return PostModel.fromJson({...data, 'id': doc.id});
+              } catch (e) {
+                print('❌ Error processing post doc ${doc.id}: $e');
+                print('📄 Doc data: ${doc.data()}');
+                return null;
+              }
+            }).where((post) => post != null).cast<PostModel>().toList();
+          }).handleError((error) {
+            print('❌ Error in streamUserPosts: $error');
+            // 인덱스 오류인 경우 orderBy 없이 시도
+            if (error.toString().contains('index') || error.toString().contains('Index')) {
+              print('🔄 Retrying without orderBy...');
+              return _postsCollection
+                  .where('companyId', isEqualTo: userId)
+                  .snapshots()
+                  .map((snapshot) {
+                    print('📊 Posts snapshot (no orderBy): ${snapshot.docs.length} documents');
+                    final posts = snapshot.docs.map((doc) {
+                      try {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return PostModel.fromJson({...data, 'id': doc.id});
+                      } catch (e) {
+                        print('❌ Error processing post doc ${doc.id}: $e');
+                        return null;
+                      }
+                    }).where((post) => post != null).cast<PostModel>().toList();
+                    
+                    // 클라이언트 사이드에서 정렬
+                    posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                    return posts;
+                  });
+            }
+            throw error;
+          });
+    } catch (e) {
+      print('❌ StreamUserPosts in datasource error: $e');
+      rethrow;
     }
   }
 }

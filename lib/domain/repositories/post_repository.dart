@@ -13,4 +13,5 @@ abstract class PostRepository {
   Future<void> updatePost(PostEntity post);
   Future<void> deletePost(String postId);
   Future<void> incrementPostViewCount(String postId);
+  Stream<List<PostEntity>> streamUserPosts(String userId);
 }

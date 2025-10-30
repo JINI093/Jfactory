@@ -25,6 +25,7 @@ class CreateCompanyUseCase {
         photos: params.photos,
         logo: params.logo,
         adPayment: params.adPayment,
+        isVerified: true, // 새로 등록되는 기업은 자동으로 승인
         createdAt: DateTime.now(),
         adExpiryDate: params.adExpiryDate,
       );

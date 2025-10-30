@@ -6,6 +6,7 @@ abstract class CompanyRepository {
   Future<List<CompanyEntity>> getCompanies({
     String? category,
     String? subcategory,
+    String? subSubcategory,
     String? region,
     int? limit,
     String? orderBy,
