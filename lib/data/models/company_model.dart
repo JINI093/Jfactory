@@ -46,8 +46,16 @@ class CompanyModel {
   });
 
   factory CompanyModel.fromJson(Map<String, dynamic> json) {
+    final docId = json['id'] as String?;
+    final ownerId = json['userId'] as String?;
+    final resolvedId = docId ?? ownerId;
+
+    if (resolvedId == null || resolvedId.isEmpty) {
+      throw ArgumentError('CompanyModel.fromJson: company id is missing');
+    }
+
     return CompanyModel(
-      id: json['userId'] as String? ?? json['id'] as String, // Handle both userId and id
+      id: resolvedId,
       companyName: json['companyName'] as String,
       ceoName: json['ceoName'] as String,
       phone: json['phone'] as String,

@@ -1375,18 +1375,44 @@ class _SignupViewState extends State<SignupView> {
     if (mounted) {
       setState(() {
         _isCheckingEmail = true;
+        _emailValidationMessage = '';
       });
     }
     
-    // Simulate email check for now - in production, implement proper backend validation
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    if (mounted) {
-      setState(() {
-        _isCheckingEmail = false;
-        _isEmailValid = true;
-        _emailValidationMessage = '사용가능한 이메일입니다.';
-      });
+    try {
+      // Firestore에서 이메일 중복 확인
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      
+      if (mounted) {
+        setState(() {
+          _isCheckingEmail = false;
+          if (querySnapshot.docs.isNotEmpty) {
+            // 이미 등록된 이메일
+            _isEmailValid = false;
+            _emailValidationMessage = '이미 등록된 이메일입니다';
+          } else {
+            // 사용 가능한 이메일
+            _isEmailValid = true;
+            _emailValidationMessage = '사용가능한 이메일입니다.';
+          }
+        });
+      }
+    } catch (e) {
+      // 에러 발생 시 처리
+      if (mounted) {
+        setState(() {
+          _isCheckingEmail = false;
+          // 네트워크 오류 등 기타 오류는 일단 사용 가능으로 표시
+          // (실제 회원가입 시 다시 확인됨)
+          _isEmailValid = true;
+          _emailValidationMessage = '';
+          debugPrint('이메일 중복 확인 중 오류: $e');
+        });
+      }
     }
   }
   

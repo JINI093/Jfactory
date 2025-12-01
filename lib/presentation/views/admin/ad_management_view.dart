@@ -214,13 +214,37 @@ class _AdManagementViewState extends State<AdManagementView> {
     );
   }
 
+  // 날짜 필드를 안전하게 파싱하는 헬퍼 함수
+  DateTime? _parseDate(dynamic dateValue) {
+    if (dateValue == null) return null;
+    
+    try {
+      if (dateValue is Timestamp) {
+        return dateValue.toDate();
+      } else if (dateValue is DateTime) {
+        return dateValue;
+      } else if (dateValue is String) {
+        return DateTime.parse(dateValue);
+      } else if (dateValue is Map) {
+        if (dateValue['_seconds'] != null) {
+          return DateTime.fromMillisecondsSinceEpoch(
+            (dateValue['_seconds'] as int) * 1000,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('날짜 파싱 오류: $e, 값: $dateValue');
+    }
+    return null;
+  }
+
   Widget _buildAdCard(String adId, Map<String, dynamic> adData) {
     final userId = adData['userId'] ?? '';
     final purchaseType = adData['purchaseType'] ?? 'unknown';
     final amount = adData['amount'] ?? 0;
     final status = adData['status'] ?? 'unknown';
-    final purchaseDate = adData['purchaseDate'] as Timestamp?;
-    final expiryDate = adData['expiryDate'] as Timestamp?;
+    final purchaseDate = _parseDate(adData['purchaseDate']);
+    final expiryDate = _parseDate(adData['expiryDate']);
 
     return Card(
       margin: EdgeInsets.only(bottom: 12.h),
@@ -304,7 +328,7 @@ class _AdManagementViewState extends State<AdManagementView> {
                 Expanded(
                   child: _buildInfoItem(
                     '구매일',
-                    purchaseDate != null ? _formatDate(purchaseDate.toDate()) : '정보 없음',
+                    purchaseDate != null ? _formatDate(purchaseDate) : '정보 없음',
                     Icons.calendar_today,
                   ),
                 ),
@@ -315,7 +339,7 @@ class _AdManagementViewState extends State<AdManagementView> {
               SizedBox(height: 8.h),
               _buildInfoItem(
                 '만료일',
-                _formatDate(expiryDate.toDate()),
+                _formatDate(expiryDate),
                 Icons.schedule,
               ),
             ],
@@ -505,14 +529,14 @@ class _AdManagementViewState extends State<AdManagementView> {
               _buildDetailRow('통화', adData['currency'] ?? 'KRW'),
               _buildDetailRow(
                 '구매일',
-                adData['purchaseDate'] != null
-                    ? _formatDate((adData['purchaseDate'] as Timestamp).toDate())
+                _parseDate(adData['purchaseDate']) != null
+                    ? _formatDate(_parseDate(adData['purchaseDate'])!)
                     : '정보 없음',
               ),
-              if (adData['expiryDate'] != null)
+              if (_parseDate(adData['expiryDate']) != null)
                 _buildDetailRow(
                   '만료일',
-                  _formatDate((adData['expiryDate'] as Timestamp).toDate()),
+                  _formatDate(_parseDate(adData['expiryDate'])!),
                 ),
             ],
           ),

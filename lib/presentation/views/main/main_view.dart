@@ -22,6 +22,9 @@ class MainView extends StatefulWidget {
 }
 
 class _MainViewState extends State<MainView> {
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _companiesSectionKey = GlobalKey();
 
   @override
   void initState() {
@@ -37,6 +40,13 @@ class _MainViewState extends State<MainView> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkCompanyRegistration() async {
@@ -100,6 +110,7 @@ class _MainViewState extends State<MainView> {
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
       body: SingleChildScrollView(
+        controller: _scrollController,
         child: Column(
           children: [
             _buildAdSenseBanner(),
@@ -152,9 +163,6 @@ class _MainViewState extends State<MainView> {
                     case 'profile':
                       context.go(RouteNames.profile);
                       break;
-                    case 'admin':
-                      context.go(RouteNames.adminMain);
-                      break;
                     case 'logout':
                       _handleLogout();
                       break;
@@ -168,16 +176,6 @@ class _MainViewState extends State<MainView> {
                         Icon(Icons.person, size: 18.sp),
                         SizedBox(width: 8.w),
                         const Text('마이페이지'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'admin',
-                    child: Row(
-                      children: [
-                        Icon(Icons.admin_panel_settings, size: 18.sp),
-                        SizedBox(width: 8.w),
-                        const Text('관리자 페이지'),
                       ],
                     ),
                   ),
@@ -245,10 +243,8 @@ class _MainViewState extends State<MainView> {
   }
 
   Widget _buildCategoryButton(CategoryModel category) {
-    // Vision + Robot 카테고리는 작은 폰트 사용
-    final isVisionRobotCategory = category.title.contains('Vision') && category.title.contains('Robot');
-    final fontSize = isVisionRobotCategory ? 10.sp : 14.sp;
-    
+    final fontSize = 13.sp;
+        
     return Container(
       width: 64.w,
       height: 64.h,
@@ -258,15 +254,17 @@ class _MainViewState extends State<MainView> {
       ),
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
+          child: InkWell(
           borderRadius: BorderRadius.circular(10.r),
           onTap: () {
             try {
-              // Encode the title properly for URL
-              final encodedTitle = Uri.encodeComponent(category.title);
-              final route = '/category/$encodedTitle';
-              print('Navigating to: $route');
-              context.go(route);
+              // 세부 카테고리 페이지로 이동
+              context.goNamed(
+                'category_detail',
+                pathParameters: {
+                  'categoryTitle': category.title,
+                },
+              );
             } catch (e) {
               print('Navigation error: $e');
               ScaffoldMessenger.of(context).showSnackBar(
@@ -302,6 +300,11 @@ class _MainViewState extends State<MainView> {
           borderRadius: BorderRadius.circular(24.r),
         ),
         child: TextField(
+          controller: _searchController,
+          onChanged: (value) {
+            final mainViewModel = context.read<MainViewModel>();
+            mainViewModel.searchCompanies(value);
+          },
           decoration: InputDecoration(
             hintText: '키워드로 검색해보세요',
             hintStyle: TextStyle(
@@ -456,24 +459,66 @@ class _MainViewState extends State<MainView> {
 
   Widget _buildPremiumCompanies() {
     return Container(
+      key: _companiesSectionKey,
       margin: EdgeInsets.all(16.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '프리미엄 기업',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-            ],
+          Consumer<MainViewModel>(
+            builder: (context, viewModel, child) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          viewModel.searchQuery.isNotEmpty 
+                              ? '검색 결과'
+                              : viewModel.selectedCategory != null
+                                  ? '${viewModel.selectedCategory} 기업'
+                                  : '프리미엄 기업',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      if (viewModel.selectedCategory != null || viewModel.searchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            viewModel.clearFilters();
+                            _searchController.clear();
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.close,
+                                size: 16.sp,
+                                color: Colors.grey[600],
+                              ),
+                              SizedBox(width: 4.w),
+                              Text(
+                                '필터 초기화',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: 16.h),
+                ],
+              );
+            },
           ),
-          SizedBox(height: 16.h),
           Consumer<MainViewModel>(
             builder: (context, viewModel, child) {
               if (viewModel.isLoading) {
@@ -512,17 +557,19 @@ class _MainViewState extends State<MainView> {
                 );
               }
 
-              // 프리미엄 기업만 필터링 (adPayment > 0인 기업들만 노출)
-              final premiumCompanies = viewModel.companies
-                  .where((company) => company.adPayment > 0)
-                  .take(6)
-                  .toList();
+              // 검색어나 카테고리 필터가 있으면 필터링된 기업 표시, 아니면 프리미엄 기업만 필터링
+              final displayCompanies = viewModel.searchQuery.isNotEmpty || viewModel.selectedCategory != null
+                  ? viewModel.companies.take(20).toList()
+                  : viewModel.companies
+                      .where((company) => company.adPayment > 0)
+                      .take(6)
+                      .toList();
               
               debugPrint('🔥 Total companies loaded: ${viewModel.companies.length}');
-              debugPrint('🔥 Premium companies found: ${premiumCompanies.length}');
+              debugPrint('🔥 Display companies found: ${displayCompanies.length}');
 
-              // 프리미엄 기업이 없으면 더미/일반 기업을 보여주지 않음
-              if (premiumCompanies.isEmpty) {
+              // 표시할 기업이 없으면 메시지 표시
+              if (displayCompanies.isEmpty) {
                 return Container(
                   margin: EdgeInsets.symmetric(vertical: 20.h),
                   child: Center(
@@ -565,9 +612,9 @@ class _MainViewState extends State<MainView> {
                   crossAxisSpacing: 12.w,
                   mainAxisSpacing: 12.h,
                 ),
-                itemCount: premiumCompanies.length,
+                itemCount: displayCompanies.length,
                 itemBuilder: (context, index) {
-                  final company = premiumCompanies[index];
+                  final company = displayCompanies[index];
                   return GestureDetector(
                     onTap: () {
                       context.push('/company-page/${company.id}');

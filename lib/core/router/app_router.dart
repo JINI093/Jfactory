@@ -75,22 +75,27 @@ class AppRouter {
       GoRoute(
         path: RouteNames.categoryDetail,
         name: 'category_detail',
-        builder: (context, state) {
-          final categoryTitle = state.pathParameters['categoryTitle']!;
-          return CategoryDetailView(categoryTitle: categoryTitle);
-        },
+        builder: (context, state) => CategoryDetailView(
+          categoryTitle: state.pathParameters['categoryTitle']!,
+        ),
       ),
       GoRoute(
         path: RouteNames.subcategoryDetail,
         name: 'subcategory_detail',
-        builder: (context, state) {
-          final categoryTitle = state.pathParameters['categoryTitle']!;
-          final subcategoryTitle = state.pathParameters['subcategoryTitle']!;
-          return SubcategoryDetailView(
-            categoryTitle: categoryTitle,
-            subcategoryTitle: subcategoryTitle,
-          );
-        },
+        builder: (context, state) => SubcategoryDetailView(
+          categoryTitle: state.pathParameters['categoryTitle']!,
+          subcategoryTitle: state.pathParameters['subcategoryTitle']!,
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.subSubcategoryDetail,
+        name: 'sub_subcategory_detail',
+        builder: (context, state) => SubcategoryDetailView(
+          categoryTitle: state.pathParameters['categoryTitle']!,
+          subcategoryTitle: state.pathParameters['subcategoryTitle']!,
+          initialSubSubcategory: state.pathParameters['subSubcategoryTitle']!,
+          forceDetailView: true,
+        ),
       ),
       GoRoute(
         path: RouteNames.premiumPostDetail,
@@ -265,22 +270,27 @@ class AppRouter {
       GoRoute(
         path: RouteNames.categoryDetail,
         name: 'category_detail',
-        builder: (context, state) {
-          final categoryTitle = state.pathParameters['categoryTitle']!;
-          return CategoryDetailView(categoryTitle: categoryTitle);
-        },
+        builder: (context, state) => CategoryDetailView(
+          categoryTitle: state.pathParameters['categoryTitle']!,
+        ),
       ),
       GoRoute(
         path: RouteNames.subcategoryDetail,
         name: 'subcategory_detail',
-        builder: (context, state) {
-          final categoryTitle = state.pathParameters['categoryTitle']!;
-          final subcategoryTitle = state.pathParameters['subcategoryTitle']!;
-          return SubcategoryDetailView(
-            categoryTitle: categoryTitle,
-            subcategoryTitle: subcategoryTitle,
-          );
-        },
+        builder: (context, state) => SubcategoryDetailView(
+          categoryTitle: state.pathParameters['categoryTitle']!,
+          subcategoryTitle: state.pathParameters['subcategoryTitle']!,
+        ),
+      ),
+      GoRoute(
+        path: RouteNames.subSubcategoryDetail,
+        name: 'sub_subcategory_detail',
+        builder: (context, state) => SubcategoryDetailView(
+          categoryTitle: state.pathParameters['categoryTitle']!,
+          subcategoryTitle: state.pathParameters['subcategoryTitle']!,
+          initialSubSubcategory: state.pathParameters['subSubcategoryTitle']!,
+          forceDetailView: true,
+        ),
       ),
       GoRoute(
         path: RouteNames.premiumPostDetail,

@@ -117,7 +117,7 @@ class _LoginViewState extends State<LoginView> {
         SizedBox(height: 60.h),
         // J제작소 로고
         Image.asset(
-          'assets/icons/main_logo.png',
+          'assets/icons/logo2.png',
           width: 120.w,
           height: 120.w,
           fit: BoxFit.contain,

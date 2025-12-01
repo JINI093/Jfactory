@@ -162,7 +162,8 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
   // Categories data from CategoryData
   List<CategoryModel> get _categories => CategoryData.categories;
   
-  // Get subcategories for selected category
+  // Get subcategories for selected category (평탄화된 리스트, 드롭다운 value 매칭용)
+  // 가장 작은 단위의 세부 카테고리까지 평탄화하여 반환
   List<String> _getSubcategoriesForSelectedCategory() {
     if (_selectedCategory == null) return [];
     
@@ -171,7 +172,125 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
       orElse: () => CategoryModel(title: '', subcategories: []),
     );
     
-    return selectedCategoryModel.subcategories;
+    final List<String> result = [];
+    final subSubcategories = selectedCategoryModel.subSubcategories;
+    final subSubSubcategories = selectedCategoryModel.subSubSubcategories;
+    
+    if (subSubcategories != null && subSubcategories.isNotEmpty) {
+      // 각 subcategory별로 세부 카테고리를 수집
+      for (final subcategory in selectedCategoryModel.subcategories) {
+        final subSubcats = subSubcategories[subcategory];
+        if (subSubcats != null && subSubcats.isNotEmpty) {
+          // 각 subSubcategory에 대해 4차 카테고리 확인
+          for (final subSubcat in subSubcats) {
+            final cleanedSubSubcat = subSubcat.replaceAll('*', '').trim();
+            
+            // 4차 카테고리(subSubSubcategories)가 있는지 확인
+            if (subSubSubcategories != null && 
+                subSubSubcategories.containsKey(subSubcat)) {
+              // 4차 카테고리가 있으면 그것들을 추가
+              final subSubSubcats = subSubSubcategories[subSubcat] ?? [];
+              for (final subSubSubcat in subSubSubcats) {
+                final cleaned = subSubSubcat.replaceAll('*', '').trim();
+                if (cleaned.isNotEmpty && !result.contains(cleaned)) {
+                  result.add(cleaned);
+                }
+              }
+            } else {
+              // 4차 카테고리가 없으면 3차 카테고리 자체를 추가
+              if (cleanedSubSubcat.isNotEmpty && !result.contains(cleanedSubSubcat)) {
+                result.add(cleanedSubSubcat);
+              }
+            }
+          }
+        } else {
+          // subSubcategories가 없으면 subcategory의 첫 줄만 사용 (* 제거)
+          final cleaned = subcategory.split('\n').first.trim().replaceAll('*', '').trim();
+          if (cleaned.isNotEmpty && !result.contains(cleaned)) {
+            result.add(cleaned);
+          }
+        }
+      }
+    } else {
+      // subSubcategories가 없으면 subcategory의 첫 줄만 사용 (* 제거)
+      for (final subcategory in selectedCategoryModel.subcategories) {
+        final cleaned = subcategory.split('\n').first.trim().replaceAll('*', '').trim();
+        if (cleaned.isNotEmpty && !result.contains(cleaned)) {
+          result.add(cleaned);
+        }
+      }
+    }
+    
+    return result;
+  }
+  
+  // 섹션별로 그룹화된 세부업종 목록 (구분선용) - 가장 작은 단위까지 포함
+  Map<String, List<String>> _getSubcategoriesGroupedBySection() {
+    if (_selectedCategory == null) return {};
+    
+    final selectedCategoryModel = _categories.firstWhere(
+      (category) => category.title == _selectedCategory,
+      orElse: () => CategoryModel(title: '', subcategories: []),
+    );
+    
+    final Map<String, List<String>> grouped = {};
+    final subSubcategories = selectedCategoryModel.subSubcategories;
+    final subSubSubcategories = selectedCategoryModel.subSubSubcategories;
+    
+    if (subSubcategories != null && subSubcategories.isNotEmpty) {
+      // 각 subcategory별로 그룹화
+      for (final subcategory in selectedCategoryModel.subcategories) {
+        final subSubcats = subSubcategories[subcategory];
+        if (subSubcats != null && subSubcats.isNotEmpty) {
+          // 섹션 이름: 첫 줄만 사용 (예: "가공1\n*선반,밀링..." -> "가공1")
+          final sectionName = subcategory.split('\n').first.trim().replaceAll('*', '').trim();
+          final List<String> sectionItems = [];
+          
+          // 각 subSubcategory에 대해 4차 카테고리 확인
+          for (final subSubcat in subSubcats) {
+            final cleanedSubSubcat = subSubcat.replaceAll('*', '').trim();
+            
+            // 4차 카테고리(subSubSubcategories)가 있는지 확인
+            if (subSubSubcategories != null && 
+                subSubSubcategories.containsKey(subSubcat)) {
+              // 4차 카테고리가 있으면 그것들을 추가
+              final subSubSubcats = subSubSubcategories[subSubcat] ?? [];
+              for (final subSubSubcat in subSubSubcats) {
+                final cleaned = subSubSubcat.replaceAll('*', '').trim();
+                if (cleaned.isNotEmpty && !sectionItems.contains(cleaned)) {
+                  sectionItems.add(cleaned);
+                }
+              }
+            } else {
+              // 4차 카테고리가 없으면 3차 카테고리 자체를 추가
+              if (cleanedSubSubcat.isNotEmpty && !sectionItems.contains(cleanedSubSubcat)) {
+                sectionItems.add(cleanedSubSubcat);
+              }
+            }
+          }
+          
+          if (sectionItems.isNotEmpty) {
+            grouped[sectionName] = sectionItems;
+          }
+        } else {
+          // subSubcategories가 없으면 subcategory 자체를 섹션으로
+          final cleaned = subcategory.split('\n').first.trim().replaceAll('*', '').trim();
+          if (cleaned.isNotEmpty) {
+            grouped[cleaned] = [cleaned];
+          }
+        }
+      }
+    } else {
+      // subSubcategories가 없으면 subcategory를 섹션으로
+      for (final subcategory in selectedCategoryModel.subcategories) {
+        final cleaned = subcategory.split('\n').first.trim().replaceAll('*', '').trim();
+        if (cleaned.isNotEmpty) {
+          grouped[cleaned] = [cleaned];
+        }
+      }
+    }
+    
+    return grouped;
   }
   
   // Image picker
@@ -179,7 +298,7 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
   File? _logoImage;
   File? _companyPhoto;
 
-  // Dropdown helper: add dividers between items for better readability
+  // Dropdown helper: add dividers between sections for better readability
   List<DropdownMenuItem<String>> _buildItemsWithDividers(List<String> items) {
     final List<DropdownMenuItem<String>> result = [];
     for (int i = 0; i < items.length; i++) {
@@ -199,6 +318,94 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         );
       }
     }
+    return result;
+  }
+  
+  // 업종 드롭다운용: 각 카테고리 사이에 구분선 추가 (세부업종과 동일한 스타일)
+  List<DropdownMenuItem<String>> _buildCategoryItemsWithDividers(List<String> items) {
+    final List<DropdownMenuItem<String>> result = [];
+    for (int i = 0; i < items.length; i++) {
+      result.add(
+        DropdownMenuItem<String>(
+          value: items[i],
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 4.h),
+            child: Text(items[i]),
+          ),
+        ),
+      );
+      // 마지막 항목이 아니면 구분선 추가 (세부업종과 동일한 스타일)
+      if (i < items.length - 1) {
+        result.add(
+          DropdownMenuItem<String>(
+            enabled: false,
+            value: '__category_divider__',
+            child: Container(
+              height: 2,
+              margin: EdgeInsets.symmetric(vertical: 0),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.grey[400]!,
+                    width: 1,
+                  ),
+                  bottom: BorderSide(
+                    color: Colors.grey[400]!,
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return result;
+  }
+  
+  // 섹션별로 그룹화된 드롭다운 아이템 생성 (구분선 포함)
+  List<DropdownMenuItem<String>> _buildGroupedItemsWithDividers() {
+    final List<DropdownMenuItem<String>> result = [];
+    final grouped = _getSubcategoriesGroupedBySection();
+    
+    bool isFirstSection = true;
+    for (final entry in grouped.entries) {
+      // 섹션 구분선 (첫 번째 섹션 제외)
+      if (!isFirstSection) {
+        result.add(
+          const DropdownMenuItem<String>(
+            enabled: false,
+            value: '__section_divider__',
+            child: Divider(height: 2, thickness: 2),
+          ),
+        );
+      }
+      isFirstSection = false;
+      
+      // 섹션 내 아이템들
+      for (int i = 0; i < entry.value.length; i++) {
+        result.add(
+          DropdownMenuItem<String>(
+            value: entry.value[i],
+            child: Padding(
+              padding: EdgeInsets.only(left: 8.w),
+              child: Text(entry.value[i]),
+            ),
+          ),
+        );
+        // 섹션 내 마지막 아이템이 아니면 구분선 추가
+        if (i < entry.value.length - 1) {
+          result.add(
+            const DropdownMenuItem<String>(
+              enabled: false,
+              value: '__item_divider__',
+              child: Divider(height: 1),
+            ),
+          );
+        }
+      }
+    }
+    
     return result;
   }
 
@@ -226,8 +433,23 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
               _businessLicenseUrlFromSignup = userData?['businessLicenseUrl'];
               _isLoading = false;
             });
+          } else {
+            // userType이 'company'가 아니어도 로딩 완료
+            setState(() {
+              _isLoading = false;
+            });
           }
+        } else {
+          // 문서가 없어도 로딩 완료
+          setState(() {
+            _isLoading = false;
+          });
         }
+      } else {
+        // 사용자가 없어도 로딩 완료
+        setState(() {
+          _isLoading = false;
+        });
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
@@ -330,57 +552,51 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
                     
                     SizedBox(height: 16.h),
                     
-                    // 업종 (토글)
+                    // 업종 (토글) - 구분선 추가
                     _buildDropdown(
                       label: '업종',
                       value: _selectedCategory,
                       items: _categories.map((category) => category.title).toList(),
                       onChanged: (value) {
-                        setState(() {
-                          _selectedCategory = value;
-                          _selectedSubcategory = null;
-                          _selectedSubSubcategory = null;
-                        });
+                        if (value != null && 
+                            value != '__category_divider__' && 
+                            value != '__section_divider__' && 
+                            value != '__item_divider__') {
+                          setState(() {
+                            _selectedCategory = value;
+                            _selectedSubcategory = null;
+                            _selectedSubSubcategory = null;
+                          });
+                        }
                       },
                       isRequired: true,
+                      itemBuilderOverride: (items) => _buildCategoryItemsWithDividers(items),
                     ),
                     
                     SizedBox(height: 16.h),
                     
-                    // 세부업종 (토글)
-                    if (_selectedCategory != null)
-                      _buildDropdown(
-                        label: '세부업종',
-                        value: _selectedSubcategory,
-                        items: _getSubcategoriesForSelectedCategory(),
-                        onChanged: (value) {
+                    // 세부업종 (항상 표시, * 제거, 섹션별 구분선)
+                    _buildDropdown(
+                      label: '세부업종',
+                      value: _selectedSubcategory,
+                      items: _selectedCategory != null ? _getSubcategoriesForSelectedCategory() : [],
+                      onChanged: (value) {
+                        if (_selectedCategory != null) {
                           setState(() {
                             _selectedSubcategory = value;
                             _selectedSubSubcategory = null;
                           });
-                        },
-                        isRequired: true,
-                        itemBuilderOverride: (items) => _buildItemsWithDividers(items),
-                      ),
+                        }
+                      },
+                      isRequired: true,
+                      itemBuilderOverride: _selectedCategory != null
+                          ? (items) => _buildGroupedItemsWithDividers()
+                          : null,
+                    ),
                     
-                    // 3차 세부업종 (있을 때만 노출)
-                    if (_selectedCategory != null &&
-                        _selectedSubcategory != null &&
-                        CategoryData.hasSubSubcategories(_selectedCategory!, _selectedSubcategory!))
-                      _buildDropdown(
-                        label: '3차 세부업종',
-                        value: _selectedSubSubcategory,
-                        items: CategoryData.getSubSubcategories(_selectedCategory!, _selectedSubcategory!) ?? [],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedSubSubcategory = value;
-                          });
-                        },
-                        isRequired: false,
-                        itemBuilderOverride: (items) => _buildItemsWithDividers(items),
-                      ),
-
-                    if (_selectedCategory != null) SizedBox(height: 16.h),
+                    // 3차 세부업종은 제거 (세부업종에서 가장 작은 단위까지 선택 가능하도록 변경)
+                    
+                    SizedBox(height: 16.h),
                     
                     // 홈페이지
                     _buildTextField(
@@ -1365,19 +1581,70 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         }
       }
 
+      // Validate required fields before saving
+      final companyName = _companyNameController.text.trim();
+      final ceoName = _ceoNameController.text.trim();
+      final phone = _phoneController.text.trim();
+      final address = _addressController.text.trim();
+      final category = _selectedCategory;
+      final subcategory = _selectedSubcategory?.replaceAll('*', '').trim();
+
+      if (companyName.isEmpty || companyName.length < 2) {
+        throw Exception('회사명을 2자 이상 입력해주세요.');
+      }
+      if (ceoName.isEmpty || ceoName.length < 2) {
+        throw Exception('대표자명을 2자 이상 입력해주세요.');
+      }
+      if (phone.isEmpty || phone.length < 10) {
+        throw Exception('연락처를 올바르게 입력해주세요.');
+      }
+      if (address.isEmpty || address.length < 5) {
+        throw Exception('주소를 올바르게 입력해주세요.');
+      }
+      if (category == null || category.isEmpty) {
+        throw Exception('업종을 선택해주세요.');
+      }
+      if (subcategory == null || subcategory.isEmpty) {
+        throw Exception('세부업종을 선택해주세요.');
+      }
+
+      // Determine if selected subcategory is a 4th level category
+      String finalSubcategory = subcategory;
+      String? finalSubSubcategory;
+      
+      final categoryModel = _categories.firstWhere(
+        (cat) => cat.title == category,
+        orElse: () => CategoryModel(title: '', subcategories: []),
+      );
+      
+      // Check if selected value is a 4th level category
+      if (categoryModel.subSubSubcategories != null) {
+        for (final entry in categoryModel.subSubSubcategories!.entries) {
+          final parentKey = entry.key.replaceAll('*', '').trim();
+          final children = entry.value.map((s) => s.replaceAll('*', '').trim()).toList();
+          
+          if (children.contains(subcategory)) {
+            // Selected value is a 4th level category
+            finalSubcategory = parentKey;
+            finalSubSubcategory = subcategory;
+            break;
+          }
+        }
+      }
+
       // Save company data to Firestore
       final companyData = {
         'userId': currentUser.uid, // This will be mapped to 'id' in the model
         'id': currentUser.uid, // Explicit id field
-        'companyName': _companyNameController.text.trim(),
+        'companyName': companyName,
         'businessLicenseImage': businessLicenseUrl,
-        'ceoName': _ceoNameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'address': _addressController.text.trim(),
+        'ceoName': ceoName,
+        'phone': phone,
+        'address': address,
         'detailAddress': _detailAddressController.text.trim(),
-        'category': _selectedCategory,
-        'subcategory': _selectedSubcategory,
-        'subSubcategory': _selectedSubSubcategory,
+        'category': category,
+        'subcategory': finalSubcategory,
+        'subSubcategory': finalSubSubcategory,
         'website': _websiteController.text.trim().isEmpty ? null : _websiteController.text.trim(),
         'greeting': _greetingController.text.trim().isEmpty ? null : _greetingController.text.trim(),
         'history': historyItems.map((item) => {
@@ -1399,10 +1666,30 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
+      debugPrint('📝 기업 데이터 저장 시작: ${companyData.keys.toList()}');
+      debugPrint('📝 필수 필드 확인: companyName=${companyName.length}자, ceoName=${ceoName.length}자, phone=${phone.length}자, address=${address.length}자');
+
+      // Save to companies collection
+      debugPrint('💾 Firestore에 기업 데이터 저장 중...');
       await FirebaseFirestore.instance
           .collection('companies')
           .doc(currentUser.uid)
-          .set(companyData);
+          .set(companyData, SetOptions(merge: false));
+      debugPrint('✅ Firestore에 기업 데이터 저장 완료');
+
+      // Update users collection to mark company registration as complete
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .update({
+              'companyRegistered': true,
+              'companyRegistrationDate': FieldValue.serverTimestamp(),
+            });
+      } catch (e) {
+        debugPrint('⚠️ users 컬렉션 업데이트 실패 (무시): $e');
+        // Continue even if users update fails
+      }
 
       if (mounted) {
         setState(() {
@@ -1415,13 +1702,28 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         
         context.go(RouteNames.main);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('❌ 기업회원 등록 실패: $e');
+      debugPrint('❌ 스택 트레이스: $stackTrace');
+      
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
         
-        _showError('등록 중 오류가 발생했습니다: ${e.toString()}');
+        // 더 구체적인 에러 메시지 제공
+        String errorMessage = '등록 중 오류가 발생했습니다';
+        if (e.toString().contains('permission-denied')) {
+          errorMessage = '권한이 없습니다. 관리자에게 문의해주세요.';
+        } else if (e.toString().contains('network')) {
+          errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+        } else if (e.toString().contains('invalid-argument')) {
+          errorMessage = '입력한 정보를 확인해주세요.';
+        } else {
+          errorMessage = '등록 중 오류가 발생했습니다: ${e.toString()}';
+        }
+        
+        _showError(errorMessage);
       }
     }
   }

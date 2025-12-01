@@ -1,15 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'presentation/views/admin/admin_main.dart';
 import 'presentation/views/admin/user_management_view.dart';
 import 'presentation/views/admin/post_management_view.dart';
 import 'presentation/views/admin/post_registration_view.dart';
+import 'presentation/views/admin/form_management_view.dart';
 import 'presentation/views/admin/ad_management_view.dart';
 import 'presentation/views/admin/inquiry_management_view.dart';
 import 'presentation/providers/app_providers.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase with fir-test-96091 project
+  try {
+    // 기존 앱이 있으면 삭제
+    try {
+      await Firebase.app().delete();
+    } catch (e) {
+      // 앱이 없으면 무시
+    }
+    
+    // fir-test-96091 프로젝트로 초기화 ([DEFAULT] 이름 사용)
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: 'AIzaSyCFYUY93SUSMC7ZD9fhsH4YFFOs-3cl-vo',
+        appId: '1:468556282634:web:a8c16384daad9e3406d8f3',
+        messagingSenderId: '468556282634',
+        projectId: 'fir-test-96091',
+        authDomain: 'fir-test-96091.firebaseapp.com',
+        storageBucket: 'fir-test-96091.firebasestorage.app',
+      ),
+    );
+    debugPrint('✅ Admin App: Firebase initialized successfully with fir-test-96091');
+  } catch (e) {
+    debugPrint('❌ Admin App: Firebase initialization failed: $e');
+  }
+  
   runApp(const AdminApp());
 }
 
@@ -21,12 +50,12 @@ class AdminApp extends StatelessWidget {
     return MultiProvider(
       providers: AppProviders.providers,
       child: ScreenUtilInit(
-        designSize: const Size(375, 812),
+        designSize: const Size(1920, 1080), // 웹 데스크톱 기준으로 변경
         minTextAdapt: true,
         splitScreenMode: true,
         builder: (context, child) {
           return MaterialApp(
-            title: 'Vendor Ads Admin',
+            title: '제작소 Admin',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               primarySwatch: Colors.blue,
@@ -67,6 +96,7 @@ class AdminApp extends StatelessWidget {
               '/user-management': (context) => const UserManagementView(),
               '/post-management': (context) => const PostManagementView(),
               '/post-registration': (context) => const PostRegistrationView(),
+              '/form-management': (context) => const FormManagementView(),
               '/ad-management': (context) => const AdManagementView(),
               '/inquiry-management': (context) => const InquiryManagementView(),
             },

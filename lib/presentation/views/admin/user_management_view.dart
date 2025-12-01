@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'company_detail_view.dart';
 
 class UserManagementView extends StatefulWidget {
   const UserManagementView({super.key});
@@ -10,10 +11,27 @@ class UserManagementView extends StatefulWidget {
 }
 
 class _UserManagementViewState extends State<UserManagementView> {
+  // [DEFAULT] 앱의 Firestore 인스턴스 사용
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  String _selectedUserType = 'all';
+  String _selectedUserType = 'company'; // 'company' 또는 'individual'
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _currentPage = 1;
+  final int _itemsPerPage = 10;
+
+  // 반응형 폰트 크기 계산
+  double _responsiveFontSize(double baseSize) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 기본 기준: 1920px (데스크톱)
+    // 화면이 작을수록 폰트 크기 감소
+    if (screenWidth < 1200) {
+      return baseSize * 0.7;
+    } else if (screenWidth < 1600) {
+      return baseSize * 0.85;
+    } else {
+      return baseSize;
+    }
+  }
 
   @override
   void dispose() {
@@ -24,118 +42,118 @@ class _UserManagementViewState extends State<UserManagementView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '회원 관리',
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      backgroundColor: Colors.white,
       body: Column(
         children: [
-          // 필터 및 검색
+          // 헤더 영역
           Container(
-            padding: EdgeInsets.all(16.w),
-            color: Colors.grey[50],
-            child: Column(
+            padding: EdgeInsets.all(24.w),
+            child: Row(
               children: [
-                // 검색바
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: '이름, 이메일로 검색...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.r),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.r),
-                      borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                    ),
+                Text(
+                  '회원관리',
+                  style: TextStyle(
+                    fontSize: _responsiveFontSize(20),
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
                 ),
-                
-                SizedBox(height: 12.h),
-                
-                // 사용자 타입 필터
+                const Spacer(),
+                // 개인회원/기업회원 탭
                 Row(
                   children: [
-                    Text(
-                      '사용자 타입: ',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black87,
-                      ),
-                    ),
+                    _buildTabButton('기업회원', 'company'),
                     SizedBox(width: 8.w),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedUserType,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 8.h,
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('전체')),
-                          DropdownMenuItem(value: 'individual', child: Text('개인')),
-                          DropdownMenuItem(value: 'company', child: Text('기업')),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedUserType = value!;
-                          });
-                        },
+                    _buildTabButton('개인회원', 'individual'),
+                  ],
+                ),
+                SizedBox(width: 16.w),
+                // 검색바
+                SizedBox(
+                  width: 200.w,
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: '검색',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4.r),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 8.h,
                       ),
                     ),
-                  ],
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                        _currentPage = 1;
+                      });
+                    },
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentPage = 1;
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[300],
+                    foregroundColor: Colors.black87,
+                    elevation: 0,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 8.h,
+                    ),
+                  ),
+                  child: Text(
+                    '검색',
+                    style: TextStyle(fontSize: _responsiveFontSize(12)),
+                  ),
                 ),
               ],
             ),
           ),
           
-          // 사용자 목록
+          // 테이블 영역
           Expanded(
-            child: _buildUserList(),
+            child: _buildUserTable(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildUserList() {
+  Widget _buildTabButton(String label, String value) {
+    final isSelected = _selectedUserType == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedUserType = value;
+          _currentPage = 1;
+        });
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.grey[600] : Colors.grey[300],
+          borderRadius: BorderRadius.circular(4.r),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: _responsiveFontSize(12),
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserTable() {
     Query query = _firestore.collection('users');
 
     // 사용자 타입 필터 적용
@@ -152,23 +170,9 @@ class _UserManagementViewState extends State<UserManagementView> {
 
         if (snapshot.hasError) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 48.sp,
-                  color: Colors.red[400],
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  '사용자 목록을 불러오는 중 오류가 발생했습니다.',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: Colors.red,
-                  ),
-                ),
-              ],
+            child: Text(
+              '오류가 발생했습니다: ${snapshot.error}',
+              style: TextStyle(fontSize: _responsiveFontSize(12), color: Colors.red),
             ),
           );
         }
@@ -182,292 +186,319 @@ class _UserManagementViewState extends State<UserManagementView> {
           final data = doc.data() as Map<String, dynamic>;
           final name = data['name']?.toString().toLowerCase() ?? '';
           final email = data['email']?.toString().toLowerCase() ?? '';
+          final companyName = data['companyName']?.toString().toLowerCase() ?? '';
           final query = _searchQuery.toLowerCase();
           
-          return name.contains(query) || email.contains(query);
+          return name.contains(query) || 
+                 email.contains(query) || 
+                 companyName.contains(query);
         }).toList();
 
         if (filteredUsers.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.people_outline,
-                  size: 48.sp,
-                  color: Colors.grey[400],
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  _searchQuery.isEmpty ? '등록된 사용자가 없습니다.' : '검색 결과가 없습니다.',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
+            child: Text(
+              _searchQuery.isEmpty ? '등록된 사용자가 없습니다.' : '검색 결과가 없습니다.',
+              style: TextStyle(fontSize: _responsiveFontSize(14), color: Colors.grey[600]),
             ),
           );
         }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(16.w),
-          itemCount: filteredUsers.length,
-          itemBuilder: (context, index) {
-            final userDoc = filteredUsers[index];
-            final userData = userDoc.data() as Map<String, dynamic>;
-            
-            return _buildUserCard(userDoc.id, userData);
-          },
+        // 페이지네이션 계산
+        final totalPages = (filteredUsers.length / _itemsPerPage).ceil();
+        final startIndex = (_currentPage - 1) * _itemsPerPage;
+        final endIndex = startIndex + _itemsPerPage;
+        final paginatedUsers = filteredUsers.sublist(
+          startIndex,
+          endIndex > filteredUsers.length ? filteredUsers.length : endIndex,
+        );
+
+        return Column(
+          children: [
+            // 테이블
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.symmetric(horizontal: 24.w),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: SingleChildScrollView(
+                  child: Table(
+                    columnWidths: _selectedUserType == 'company'
+                        ? {
+                            0: FixedColumnWidth(50.w),
+                            1: FlexColumnWidth(2),
+                            2: FlexColumnWidth(1.5),
+                            3: FlexColumnWidth(2),
+                            4: FlexColumnWidth(1.5),
+                            5: FlexColumnWidth(1.5),
+                            6: FlexColumnWidth(1),
+                          }
+                        : {
+                            0: FixedColumnWidth(50.w),
+                            1: FlexColumnWidth(2),
+                            2: FlexColumnWidth(2),
+                            3: FlexColumnWidth(1.5),
+                            4: FlexColumnWidth(2),
+                          },
+                    children: [
+                      // 헤더
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(8.r),
+                            topRight: Radius.circular(8.r),
+                          ),
+                        ),
+                        children: _selectedUserType == 'company'
+                            ? [
+                                _buildHeaderCell(''),
+                                _buildHeaderCell('기업명'),
+                                _buildHeaderCell('승인여부', showSortIcon: true),
+                                _buildHeaderCell('이메일'),
+                                _buildHeaderCell('가입경로'),
+                                _buildHeaderCell('기업대표명'),
+                                _buildHeaderCell('자세히보기'),
+                              ]
+                            : [
+                                _buildHeaderCell(''),
+                                _buildHeaderCell('이름'),
+                                _buildHeaderCell('이메일'),
+                                _buildHeaderCell('가입경로'),
+                                _buildHeaderCell('핸드폰 번호'),
+                              ],
+                      ),
+                      // 데이터 행
+                      ...paginatedUsers.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final userDoc = entry.value;
+                        final userData = userDoc.data() as Map<String, dynamic>;
+                        return _buildTableRow(
+                          startIndex + index + 1,
+                          userDoc.id,
+                          userData,
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // 페이지네이션
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 16.h),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: _currentPage > 1
+                        ? () {
+                            setState(() {
+                              _currentPage--;
+                            });
+                          }
+                        : null,
+                  ),
+                  ...List.generate(
+                    totalPages > 10 ? 10 : totalPages,
+                    (index) {
+                      final pageNum = index + 1;
+                      final isCurrentPage = _currentPage == pageNum;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _currentPage = pageNum;
+                          });
+                        },
+                        child: Container(
+                          margin: EdgeInsets.symmetric(horizontal: 4.w),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12.w,
+                            vertical: 8.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isCurrentPage ? Colors.grey[600] : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: Text(
+                            '$pageNum',
+                            style: TextStyle(
+                              fontSize: _responsiveFontSize(12),
+                              color: isCurrentPage ? Colors.white : Colors.black87,
+                              fontWeight: isCurrentPage ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _currentPage < totalPages
+                        ? () {
+                            setState(() {
+                              _currentPage++;
+                            });
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildUserCard(String userId, Map<String, dynamic> userData) {
-    final name = userData['name'] ?? '이름 없음';
-    final email = userData['email'] ?? '이메일 없음';
-    final userType = userData['userType'] ?? 'unknown';
-    final createdAt = userData['createdAt'] as Timestamp?;
-    final companyName = userData['companyName'] as String?;
-    final phone = userData['phone'] as String?;
-
-    return Card(
-      margin: EdgeInsets.only(bottom: 12.h),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.r),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 20.r,
-                  backgroundColor: _getUserTypeColor(userType),
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16.sp,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      SizedBox(height: 2.h),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                  decoration: BoxDecoration(
-                    color: _getUserTypeColor(userType).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4.r),
-                  ),
-                  child: Text(
-                    _getUserTypeText(userType),
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w500,
-                      color: _getUserTypeColor(userType),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            
-            if (companyName != null) ...[
-              SizedBox(height: 8.h),
-              Row(
-                children: [
-                  Icon(
-                    Icons.business,
-                    size: 16.sp,
-                    color: Colors.grey[600],
-                  ),
-                  SizedBox(width: 4.w),
-                  Text(
-                    companyName,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            
-            if (phone != null) ...[
-              SizedBox(height: 4.h),
-              Row(
-                children: [
-                  Icon(
-                    Icons.phone,
-                    size: 16.sp,
-                    color: Colors.grey[600],
-                  ),
-                  SizedBox(width: 4.w),
-                  Text(
-                    phone,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            
-            SizedBox(height: 8.h),
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today,
-                  size: 16.sp,
-                  color: Colors.grey[600],
-                ),
-                SizedBox(width: 4.w),
-                Text(
-                  createdAt != null
-                      ? '가입일: ${_formatDate(createdAt.toDate())}'
-                      : '가입일: 정보 없음',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => _showUserDetails(userId, userData),
-                  child: Text(
-                    '상세보기',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: const Color(0xFF1E3A5F),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Color _getUserTypeColor(String userType) {
-    switch (userType) {
-      case 'individual':
-        return Colors.blue;
-      case 'company':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _getUserTypeText(String userType) {
-    switch (userType) {
-      case 'individual':
-        return '개인';
-      case 'company':
-        return '기업';
-      default:
-        return '알 수 없음';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
-  }
-
-  void _showUserDetails(String userId, Map<String, dynamic> userData) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('사용자 상세 정보'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('이름', userData['name'] ?? '정보 없음'),
-              _buildDetailRow('이메일', userData['email'] ?? '정보 없음'),
-              _buildDetailRow('사용자 타입', _getUserTypeText(userData['userType'] ?? 'unknown')),
-              if (userData['companyName'] != null)
-                _buildDetailRow('회사명', userData['companyName']),
-              if (userData['phone'] != null)
-                _buildDetailRow('전화번호', userData['phone']),
-              _buildDetailRow(
-                '가입일',
-                userData['createdAt'] != null
-                    ? _formatDate((userData['createdAt'] as Timestamp).toDate())
-                    : '정보 없음',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8.h),
+  Widget _buildHeaderCell(String text, {bool showSortIcon = false}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 80.w,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[700],
-              ),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: _responsiveFontSize(12),
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: 14.sp,
-                color: Colors.black87,
-              ),
-            ),
-          ),
+          if (showSortIcon) ...[
+            SizedBox(width: 4.w),
+            Icon(Icons.arrow_downward, size: _responsiveFontSize(14), color: Colors.grey[600]),
+          ],
         ],
       ),
     );
   }
+
+  TableRow _buildTableRow(int index, String userId, Map<String, dynamic> userData) {
+    if (_selectedUserType == 'company') {
+      final companyName = userData['companyName'] ?? '기업명 없음';
+      final isApproved = userData['isApproved'] ?? false;
+      final email = userData['email'] ?? '이메일 없음';
+      final registrationPath = _getRegistrationPath(userData);
+      final representativeName = userData['representativeName'] ?? 
+                                  userData['name'] ?? 
+                                  '대표명 없음';
+      
+      return TableRow(
+        children: [
+          _buildCell('$index'),
+          _buildCell(companyName),
+          _buildCell(isApproved ? '승인' : '미승인', 
+                    color: isApproved ? Colors.green : Colors.red),
+          _buildCell(email),
+          _buildCell(registrationPath),
+          _buildCell(representativeName),
+          _buildCell('자세히 보기', isLink: true, userId: userId, userData: userData),
+        ],
+      );
+    } else {
+      final name = userData['name'] ?? '이름 없음';
+      final email = userData['email'] ?? '이메일 없음';
+      final registrationPath = _getRegistrationPath(userData);
+      final phone = userData['phone'] ?? '번호 없음';
+      
+      return TableRow(
+        children: [
+          _buildCell('$index'),
+          _buildCell(name),
+          _buildCell(email),
+          _buildCell(registrationPath),
+          _buildCell(phone),
+        ],
+      );
+    }
+  }
+
+  Widget _buildCell(String text, {Color? color, bool isLink = false, String? userId, Map<String, dynamic>? userData}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+      child: isLink
+          ? GestureDetector(
+              onTap: () {
+                if (userId != null && userData != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CompanyDetailView(
+                        userId: userId,
+                        userData: userData,
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: _responsiveFontSize(12),
+                  color: Colors.blue,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            )
+          : Text(
+              text,
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                color: color ?? Colors.black87,
+              ),
+            ),
+    );
+  }
+
+  String _getRegistrationPath(Map<String, dynamic> userData) {
+    // Firestore에 저장된 provider 정보 확인
+    // 여러 가능한 필드명 확인
+    final provider = userData['provider']?.toString().toLowerCase() ?? '';
+    final providerId = userData['providerId']?.toString().toLowerCase() ?? '';
+    final registrationMethod = userData['registrationMethod']?.toString().toLowerCase() ?? '';
+    final authProvider = userData['authProvider']?.toString().toLowerCase() ?? '';
+    final signInMethod = userData['signInMethod']?.toString().toLowerCase() ?? '';
+    
+    // 모든 provider 관련 필드를 합쳐서 확인
+    String combinedProvider = '$provider$providerId$registrationMethod$authProvider$signInMethod';
+    
+    // 네이버 로그인 확인
+    if (combinedProvider.contains('naver') || 
+        combinedProvider.contains('naver.com') ||
+        provider == 'naver' ||
+        providerId == 'naver.com') {
+      return '네이버';
+    }
+    
+    // 구글 로그인 확인
+    if (combinedProvider.contains('google') || 
+        combinedProvider.contains('google.com') ||
+        provider == 'google' ||
+        providerId == 'google.com') {
+      return '구글';
+    }
+    
+    // 카카오 로그인 확인
+    if (combinedProvider.contains('kakao') || 
+        combinedProvider.contains('kakao.com') ||
+        provider == 'kakao' ||
+        providerId == 'kakao.com') {
+      return '카카오';
+    }
+    
+    // 애플 로그인 확인
+    if (combinedProvider.contains('apple') || 
+        combinedProvider.contains('apple.com') ||
+        provider == 'apple' ||
+        providerId == 'apple.com') {
+      return '애플';
+    }
+    
+    // provider 정보가 없거나 password인 경우 이메일 가입으로 간주
+    // 이메일/비밀번호 가입 = 일반
+    return '일반';
+  }
+
 }

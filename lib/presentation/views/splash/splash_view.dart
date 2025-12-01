@@ -28,8 +28,10 @@ class _SplashViewState extends State<SplashView> {
       backgroundColor: Colors.white,
       body: Center(
         child: Image.asset(
-          'assets/splash/splash.png',
+          'assets/splash/@splash.png',
           fit: BoxFit.contain,
+          width: 200,
+          height: 200,
         ),
       ),
     );

@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../../core/router/route_names.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -15,6 +18,7 @@ import '../../../domain/repositories/inquiry_repository.dart';
 import '../../../domain/repositories/post_repository.dart';
 import '../../../domain/repositories/purchase_repository.dart';
 import '../post/post_detail_view.dart';
+import '../post/post_edit_view.dart';
 import '../../../data/models/category_model.dart';
 
 class ProfileView extends StatefulWidget {
@@ -66,6 +70,12 @@ class _ProfileViewState extends State<ProfileView> {
   String? _selectedSubcategory;
   String? _selectedSubSubcategory;
   
+  // Image picker
+  final ImagePicker _imagePicker = ImagePicker();
+  File? _selectedCompanyPhoto;
+  File? _selectedCompanyLogo;
+  File? _selectedBusinessLicense;
+  
   // Categories data from CategoryData
   List<CategoryModel> get _categories => CategoryData.categories;
   
@@ -73,9 +83,9 @@ class _ProfileViewState extends State<ProfileView> {
   final Map<String, String> _legacyCategoryMapping = {
     '절삭가공': '기계 제작',
     '절단/밴딩/절곡/용접': '기계 제작',
-    '사출': '사출\n(공병, 플라스틱 등)',
-    '금형': '*금형\n*3D 프린터',
-    '*금형 *3D 프린터': '*금형\n*3D 프린터', // Firebase에 저장된 형태
+    '사출': '사출\n(공병, 플라스틱, 유리 등)',
+    '금형': '*금형/몰드\n*3D 프린터',
+    '*금형/몰드 *3D 프린터': '*금형/몰드\n*3D 프린터', // Firebase에 저장된 형태
     '표면처리': '*표면처리\n*건조기\n(열,UV,LED)',
     '인쇄': '인쇄',
     '기계제작': '기계 제작',
@@ -600,8 +610,8 @@ class _ProfileViewState extends State<ProfileView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(height: 20.h),
-                _buildCompanyImagesSection(),
-                SizedBox(height: 20.h),
+                if (_isEditMode) _buildCompanyImagesSection(),
+                if (_isEditMode) SizedBox(height: 20.h),
                 _buildTextFieldWithController('기업명', '기업명을 입력해주세요', _companyNameController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
                 _buildTextFieldWithController('기업대표명', 'CEO 이름을 입력해주세요', _ceoNameController, isRequired: true, readOnly: !_isEditMode),
@@ -621,8 +631,6 @@ class _ProfileViewState extends State<ProfileView> {
                 if (!_isEditMode) _buildHistoryDisplaySection() else _buildHistoryEditSection(),
                 SizedBox(height: 20.h),
                 if (!_isEditMode) _buildClientsDisplaySection() else _buildClientsEditSection(),
-                SizedBox(height: 20.h),
-                _buildTextFieldWithController('특징', '기업 특징을 입력해주세요', _featuresController, readOnly: !_isEditMode),
                 SizedBox(height: 20.h),
               ],
             ),
@@ -1568,6 +1576,9 @@ class _ProfileViewState extends State<ProfileView> {
   }
 
   Widget _buildPostItemFromEntity(PostEntity post) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isOwner = currentUser != null && post.companyId == currentUser.uid;
+    
     return InkWell(
       onTap: () {
         // 게시글 상세 보기로 이동
@@ -1714,6 +1725,23 @@ class _ProfileViewState extends State<ProfileView> {
               ],
             ),
           ),
+          // 본인 게시글인 경우에만 수정 버튼 표시
+          if (isOwner)
+            IconButton(
+              icon: Icon(
+                Icons.edit,
+                size: 20.sp,
+                color: const Color(0xFF1E3A5F),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostEditView(post: post),
+                  ),
+                );
+              },
+            ),
         ],
       ),
       ),
@@ -2366,28 +2394,53 @@ class _ProfileViewState extends State<ProfileView> {
                 ),
               ),
               SizedBox(height: 8.h),
-              Container(
-                width: double.infinity,
-                height: 120.h,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.r),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: TextFormField(
-                  controller: _featuresController,
-                  maxLines: null,
-                  expands: true,
-                  decoration: InputDecoration(
-                    hintText: '특징을 입력해주세요',
-                    hintStyle: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.grey[500],
+              GestureDetector(
+                onTap: !_isEditMode ? _enableEditMode : null,
+                child: Container(
+                  width: double.infinity,
+                  constraints: BoxConstraints(
+                    minHeight: 120.h,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(
+                      color: _isEditMode ? const Color(0xFF1E3A5F) : Colors.grey[300]!,
                     ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.all(16.w),
+                  ),
+                  child: TextFormField(
+                    controller: _featuresController,
+                    readOnly: !_isEditMode,
+                    maxLines: null,
+                    minLines: 5,
+                    decoration: InputDecoration(
+                      hintText: _featuresController.text.isEmpty 
+                          ? '특징을 입력해주세요' 
+                          : null,
+                      hintStyle: TextStyle(
+                        fontSize: 14.sp,
+                        color: Colors.grey[500],
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(16.w),
+                    ),
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: _isEditMode ? Colors.black : Colors.black87,
+                    ),
                   ),
                 ),
               ),
+              if (!_isEditMode && _featuresController.text.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: 4.h),
+                  child: Text(
+                    '클릭하여 수정',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -2419,151 +2472,280 @@ class _ProfileViewState extends State<ProfileView> {
             },
           ),
         ),
-        SizedBox(height: 20.h),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '회사 사진',
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black,
-                          ),
-                        ),
-                        SizedBox(height: 8.h),
-                        Container(
-                          width: 134.w,
-                          height: 120.h,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8.r),
-                            border: Border.all(color: Colors.grey[300]!),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.add,
-                                size: 24.sp,
-                                color: Colors.grey[500],
-                              ),
-                              SizedBox(height: 8.h),
-                              Text(
-                                '사진 업로드',
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '회사로고',
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black,
-                          ),
-                        ),
-                        SizedBox(height: 8.h),
-                        Container(
-                          width: 134.w,
-                          height: 120.h,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8.r),
-                            border: Border.all(color: Colors.grey[300]!),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.add,
-                                size: 24.sp,
-                                color: Colors.grey[500],
-                              ),
-                              SizedBox(height: 8.h),
-                              Text(
-                                '로고 업로드',
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 20.h),
-              Container(
-                width: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        // 회사사진, 회사로고, 사업자 등록증은 수정 모드일 때만 표시
+        if (_isEditMode) ...[
+          SizedBox(height: 20.h),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: Column(
+              children: [
+                Row(
                   children: [
-                    Text(
-                      '사업자 등록증',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    Container(
-                      width: double.infinity,
-                      height: 100.h,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8.r),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
+                    Expanded(
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.attach_file,
-                            size: 24.sp,
-                            color: Colors.grey[500],
+                          Text(
+                            '회사 사진',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black,
+                            ),
                           ),
                           SizedBox(height: 8.h),
-                          Text(
-                            '첨부하기',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: Colors.grey[500],
+                          GestureDetector(
+                            onTap: _pickCompanyPhoto,
+                            child: Container(
+                              width: 134.w,
+                              height: 120.h,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8.r),
+                                border: Border.all(
+                                  color: _selectedCompanyPhoto != null || (_companyData?['photo'] != null && _companyData!['photo'].toString().isNotEmpty)
+                                      ? const Color(0xFF1E3A5F)
+                                      : Colors.grey[300]!,
+                                  width: _selectedCompanyPhoto != null || (_companyData?['photo'] != null && _companyData!['photo'].toString().isNotEmpty) ? 2 : 1,
+                                ),
+                              ),
+                              child: _selectedCompanyPhoto != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8.r),
+                                      child: Image.file(
+                                        _selectedCompanyPhoto!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                      ),
+                                    )
+                                  : (_companyData?['photo'] != null && _companyData!['photo'].toString().isNotEmpty)
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.r),
+                                          child: Image.network(
+                                            _companyData!['photo'],
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: double.infinity,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.error_outline, size: 24.sp, color: Colors.grey[500]),
+                                                  SizedBox(height: 8.h),
+                                                  Text('이미지 로드 실패', style: TextStyle(fontSize: 10.sp, color: Colors.grey[500])),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        )
+                                      : Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.add,
+                                              size: 24.sp,
+                                              color: Colors.grey[500],
+                                            ),
+                                            SizedBox(height: 8.h),
+                                            Text(
+                                              '사진 업로드',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                color: Colors.grey[500],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    // 하단 완료 버튼 제거 (전체 저장 버튼으로 일원화)
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '회사로고',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black,
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          GestureDetector(
+                            onTap: _pickCompanyLogo,
+                            child: Container(
+                              width: 134.w,
+                              height: 120.h,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8.r),
+                                border: Border.all(
+                                  color: _selectedCompanyLogo != null || (_companyData?['logo'] != null && _companyData!['logo'].toString().isNotEmpty)
+                                      ? const Color(0xFF1E3A5F)
+                                      : Colors.grey[300]!,
+                                  width: _selectedCompanyLogo != null || (_companyData?['logo'] != null && _companyData!['logo'].toString().isNotEmpty) ? 2 : 1,
+                                ),
+                              ),
+                              child: _selectedCompanyLogo != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8.r),
+                                      child: Image.file(
+                                        _selectedCompanyLogo!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                      ),
+                                    )
+                                  : (_companyData?['logo'] != null && _companyData!['logo'].toString().isNotEmpty)
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.r),
+                                          child: Image.network(
+                                            _companyData!['logo'],
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: double.infinity,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.error_outline, size: 24.sp, color: Colors.grey[500]),
+                                                  SizedBox(height: 8.h),
+                                                  Text('이미지 로드 실패', style: TextStyle(fontSize: 10.sp, color: Colors.grey[500])),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        )
+                                      : Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.add,
+                                              size: 24.sp,
+                                              color: Colors.grey[500],
+                                            ),
+                                            SizedBox(height: 8.h),
+                                            Text(
+                                              '로고 업로드',
+                                              style: TextStyle(
+                                                fontSize: 12.sp,
+                                                color: Colors.grey[500],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            ],
+                SizedBox(height: 20.h),
+                Container(
+                  width: double.infinity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '사업자 등록증',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      GestureDetector(
+                        onTap: _pickBusinessLicense,
+                        child: Container(
+                          width: double.infinity,
+                          height: 100.h,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8.r),
+                            border: Border.all(
+                              color: _selectedBusinessLicense != null || _getBusinessLicenseUrl() != null
+                                  ? const Color(0xFF1E3A5F)
+                                  : Colors.grey[300]!,
+                              width: _selectedBusinessLicense != null || _getBusinessLicenseUrl() != null ? 2 : 1,
+                            ),
+                          ),
+                          child: _selectedBusinessLicense != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  child: Image.file(
+                                    _selectedBusinessLicense!,
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                  ),
+                                )
+                              : _getBusinessLicenseUrl() != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8.r),
+                                      child: Image.network(
+                                        _getBusinessLicenseUrl()!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null) return child;
+                                          return Center(
+                                            child: CircularProgressIndicator(
+                                              value: loadingProgress.expectedTotalBytes != null
+                                                  ? loadingProgress.cumulativeBytesLoaded /
+                                                      loadingProgress.expectedTotalBytes!
+                                                  : null,
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (context, error, stackTrace) {
+                                          debugPrint('사업자 등록증 이미지 로드 실패: $error');
+                                          return Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(Icons.error_outline, size: 24.sp, color: Colors.grey[500]),
+                                              SizedBox(height: 8.h),
+                                              Text('이미지 로드 실패', style: TextStyle(fontSize: 10.sp, color: Colors.grey[500])),
+                                            ],
+                                          );
+                                        },
+                                      ),
+                                    )
+                                  : Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.attach_file,
+                                          size: 24.sp,
+                                          color: Colors.grey[500],
+                                        ),
+                                        SizedBox(height: 8.h),
+                                        Text(
+                                          '첨부하기',
+                                          style: TextStyle(
+                                            fontSize: 12.sp,
+                                            color: Colors.grey[500],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                        ),
+                      ),
+                      // 하단 완료 버튼 제거 (전체 저장 버튼으로 일원화)
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -2966,7 +3148,9 @@ class _ProfileViewState extends State<ProfileView> {
               child: _buildImageContainer(
                 title: '회사사진',
                 imageUrl: _companyData!['photo'],
+                selectedFile: _selectedCompanyPhoto,
                 height: 120.h,
+                onTap: _pickCompanyPhoto,
               ),
             ),
             SizedBox(width: 16.w),
@@ -2975,7 +3159,9 @@ class _ProfileViewState extends State<ProfileView> {
               child: _buildImageContainer(
                 title: '회사로고',
                 imageUrl: _companyData!['logo'],
+                selectedFile: _selectedCompanyLogo,
                 height: 120.h,
+                onTap: _pickCompanyLogo,
               ),
             ),
           ],
@@ -2984,9 +3170,11 @@ class _ProfileViewState extends State<ProfileView> {
         // Business License
         _buildImageContainer(
           title: '사업자등록증',
-          imageUrl: _companyData!['businessLicenseImage'],
+          imageUrl: _getBusinessLicenseUrl(),
+          selectedFile: _selectedBusinessLicense,
           height: 200.h,
           fullWidth: true,
+          onTap: _pickBusinessLicense,
         ),
       ],
     );
@@ -2995,9 +3183,13 @@ class _ProfileViewState extends State<ProfileView> {
   Widget _buildImageContainer({
     required String title,
     String? imageUrl,
+    File? selectedFile,
     required double height,
     bool fullWidth = false,
+    VoidCallback? onTap,
   }) {
+    final hasImage = selectedFile != null || (imageUrl != null && imageUrl.isNotEmpty);
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3010,80 +3202,202 @@ class _ProfileViewState extends State<ProfileView> {
           ),
         ),
         SizedBox(height: 4.h),
-        Container(
-          width: fullWidth ? double.infinity : null,
-          height: height,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey[300]!),
-            borderRadius: BorderRadius.circular(8.r),
-            color: Colors.grey[50],
+        GestureDetector(
+          onTap: _isEditMode ? onTap : null,
+          child: Container(
+            width: fullWidth ? double.infinity : null,
+            height: height,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: _isEditMode 
+                    ? (hasImage ? const Color(0xFF1E3A5F) : Colors.grey[300]!)
+                    : Colors.grey[300]!,
+                width: _isEditMode && hasImage ? 2 : 1,
+              ),
+              borderRadius: BorderRadius.circular(8.r),
+              color: Colors.grey[50],
+            ),
+            child: hasImage
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8.r),
+                    child: selectedFile != null
+                        ? Image.file(
+                            selectedFile,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          )
+                        : Image.network(
+                            imageUrl!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      size: 32.sp,
+                                      color: Colors.grey[400],
+                                    ),
+                                    SizedBox(height: 8.h),
+                                    Text(
+                                      '이미지 로드 실패',
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _isEditMode ? Icons.add_photo_alternate : Icons.image_outlined,
+                          size: 32.sp,
+                          color: Colors.grey[400],
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          _isEditMode ? '클릭하여 이미지 선택' : '이미지 없음',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
-          child: imageUrl != null && imageUrl.isNotEmpty
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 32.sp,
-                              color: Colors.grey[400],
-                            ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              '이미지 로드 실패',
-                              style: TextStyle(
-                                fontSize: 12.sp,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                )
-              : Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.image_outlined,
-                        size: 32.sp,
-                        color: Colors.grey[400],
-                      ),
-                      SizedBox(height: 8.h),
-                      Text(
-                        '이미지 없음',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
         ),
       ],
     );
+  }
+  
+  Future<void> _pickCompanyPhoto() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      
+      if (image != null && mounted) {
+        setState(() {
+          _selectedCompanyPhoto = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('이미지 선택 중 오류가 발생했습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _pickCompanyLogo() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+      
+      if (image != null && mounted) {
+        setState(() {
+          _selectedCompanyLogo = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('이미지 선택 중 오류가 발생했습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _pickBusinessLicense() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      
+      if (image != null && mounted) {
+        setState(() {
+          _selectedBusinessLicense = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('이미지 선택 중 오류가 발생했습니다: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  // 사업자 등록증 URL 가져오기 (두 필드 모두 확인)
+  String? _getBusinessLicenseUrl() {
+    if (_companyData == null) return null;
+    
+    // businessLicenseImage 필드 확인
+    final businessLicenseImage = _companyData!['businessLicenseImage'];
+    if (businessLicenseImage != null && businessLicenseImage.toString().isNotEmpty) {
+      return businessLicenseImage.toString();
+    }
+    
+    // businessLicenseUrl 필드 확인 (회원가입 시 사용)
+    final businessLicenseUrl = _companyData!['businessLicenseUrl'];
+    if (businessLicenseUrl != null && businessLicenseUrl.toString().isNotEmpty) {
+      return businessLicenseUrl.toString();
+    }
+    
+    return null;
+  }
+
+  Future<String> _uploadImage(File image, String path) async {
+    try {
+      final ref = FirebaseStorage.instance.ref().child(path);
+      final uploadTask = await ref.putFile(image);
+      return await uploadTask.ref.getDownloadURL();
+    } catch (e) {
+      throw Exception('이미지 업로드 실패: $e');
+    }
   }
 
   Future<void> _saveCompanyData() async {
@@ -3099,6 +3413,32 @@ class _ProfileViewState extends State<ProfileView> {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
         throw Exception('사용자가 로그인되지 않았습니다.');
+      }
+
+      // Upload images if selected
+      String? photoUrl = _companyData?['photo'];
+      String? logoUrl = _companyData?['logo'];
+      String? businessLicenseUrl = _getBusinessLicenseUrl();
+
+      if (_selectedCompanyPhoto != null) {
+        photoUrl = await _uploadImage(
+          _selectedCompanyPhoto!,
+          'company_photos/${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+      }
+
+      if (_selectedCompanyLogo != null) {
+        logoUrl = await _uploadImage(
+          _selectedCompanyLogo!,
+          'company_logos/${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+      }
+
+      if (_selectedBusinessLicense != null) {
+        businessLicenseUrl = await _uploadImage(
+          _selectedBusinessLicense!,
+          'business_licenses/${currentUser.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
       }
 
       // Prepare updated company data
@@ -3122,6 +3462,9 @@ class _ProfileViewState extends State<ProfileView> {
           'name': item['name'] ?? '',
           'details': item['details'] ?? '',
         }).where((item) => item['name']!.isNotEmpty || item['details']!.isNotEmpty).toList(),
+        'photo': photoUrl,
+        'logo': logoUrl,
+        'businessLicenseImage': businessLicenseUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
@@ -3131,9 +3474,12 @@ class _ProfileViewState extends State<ProfileView> {
           .doc(currentUser.uid)
           .update(updatedData);
 
-      // Update local data
+      // Clear selected images after upload
       setState(() {
         _companyData = {..._companyData!, ...updatedData};
+        _selectedCompanyPhoto = null;
+        _selectedCompanyLogo = null;
+        _selectedBusinessLicense = null;
         _isEditMode = false;
         _isSaving = false;
       });
@@ -3185,18 +3531,18 @@ class _ProfileViewState extends State<ProfileView> {
             ),
             contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
           ),
-          items: _categories.map((category) {
-            return DropdownMenuItem(
-              value: category.title,
-              child: Text(category.title),
-            );
-          }).toList(),
+          items: _buildCategoryItemsWithDividers(_categories.map((category) => category.title).toList()),
           onChanged: (value) {
-            setState(() {
-              _selectedCategory = value;
-              _selectedSubcategory = null; // 카테고리 변경 시 세부카테고리 초기화
-              _selectedSubSubcategory = null;
-            });
+            if (value != null && 
+                value != '__category_divider__' && 
+                value != '__section_divider__' && 
+                value != '__item_divider__') {
+              setState(() {
+                _selectedCategory = value;
+                _selectedSubcategory = null; // 카테고리 변경 시 세부카테고리 초기화
+                _selectedSubSubcategory = null;
+              });
+            }
           },
         ),
         SizedBox(height: 16.h),
@@ -3567,5 +3913,46 @@ class _ProfileViewState extends State<ProfileView> {
     );
   }
 
+  // 업종 드롭다운용: 각 카테고리 사이에 구분선 추가 (세부업종과 동일한 스타일)
+  List<DropdownMenuItem<String>> _buildCategoryItemsWithDividers(List<String> items) {
+    final List<DropdownMenuItem<String>> result = [];
+    for (int i = 0; i < items.length; i++) {
+      result.add(
+        DropdownMenuItem<String>(
+          value: items[i],
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 4.h),
+            child: Text(items[i]),
+          ),
+        ),
+      );
+      // 마지막 항목이 아니면 구분선 추가 (세부업종과 동일한 스타일)
+      if (i < items.length - 1) {
+        result.add(
+          DropdownMenuItem<String>(
+            enabled: false,
+            value: '__category_divider__',
+            child: Container(
+              height: 2,
+              margin: EdgeInsets.symmetric(vertical: 0),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.grey[400]!,
+                    width: 1,
+                  ),
+                  bottom: BorderSide(
+                    color: Colors.grey[400]!,
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return result;
+  }
 
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../viewmodels/main_viewmodel.dart';
-import '../../../core/router/route_names.dart';
 import '../../../domain/entities/company_entity.dart';
 
 class MainView extends StatefulWidget {
@@ -39,7 +38,7 @@ class _MainViewState extends State<MainView> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'Vendor Ads',
+          '제작소',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -118,7 +117,8 @@ class _MainViewState extends State<MainView> {
                         context.go('/company/${company.id}');
                       },
                       onFavoriteToggle: () {
-                        viewModel.toggleFavorite(company.id);
+                        // TODO: 좋아요 기능은 FavoriteViewModel을 통해 처리해야 함
+                        // viewModel.toggleFavorite(company.id);
                       },
                     );
                   },

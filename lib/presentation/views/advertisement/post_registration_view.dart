@@ -115,9 +115,18 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: CategoryData.categories.length,
+              itemCount: CategoryData.categories.length * 2 - 1, // 항목 + 구분선
               itemBuilder: (context, index) {
-                final category = CategoryData.categories[index];
+                // 구분선 인덱스 (홀수)
+                if (index.isOdd) {
+                  return const Divider(
+                    height: 2,
+                    thickness: 2,
+                  );
+                }
+                // 카테고리 항목 인덱스 (짝수)
+                final categoryIndex = index ~/ 2;
+                final category = CategoryData.categories[categoryIndex];
                 return ListTile(
                   title: Text(category.title),
                   onTap: () {
@@ -149,9 +158,18 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: _availableSubcategories.length,
+              itemCount: _availableSubcategories.length * 2 - 1, // 항목 + 구분선
               itemBuilder: (context, index) {
-                final subcategory = _availableSubcategories[index];
+                // 구분선 인덱스 (홀수)
+                if (index.isOdd) {
+                  return const Divider(
+                    height: 2,
+                    thickness: 2,
+                  );
+                }
+                // 세부 카테고리 항목 인덱스 (짝수)
+                final subcategoryIndex = index ~/ 2;
+                final subcategory = _availableSubcategories[subcategoryIndex];
                 return ListTile(
                   title: Text(subcategory),
                   onTap: () {
@@ -187,9 +205,18 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
             width: double.maxFinite,
             child: ListView.builder(
               shrinkWrap: true,
-              itemCount: _availableSubSubcategories.length,
+              itemCount: _availableSubSubcategories.length * 2 - 1, // 항목 + 구분선
               itemBuilder: (context, index) {
-                final subSubcategory = _availableSubSubcategories[index];
+                // 구분선 인덱스 (홀수)
+                if (index.isOdd) {
+                  return const Divider(
+                    height: 2,
+                    thickness: 2,
+                  );
+                }
+                // 세부 세부 카테고리 항목 인덱스 (짝수)
+                final subSubcategoryIndex = index ~/ 2;
+                final subSubcategory = _availableSubSubcategories[subSubcategoryIndex];
                 return ListTile(
                   title: Text(subSubcategory),
                   onTap: () {

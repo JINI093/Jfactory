@@ -261,12 +261,6 @@ class CompanyViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleFavorite(String companyId) {
-    // TODO: Implement favorite functionality
-    // 즐겨찾기 기능은 사용자 계정과 연동하여 추후 구현
-    debugPrint('Toggle favorite for company: $companyId');
-  }
-
   // Clear error
   void clearError() {
     _errorMessage = null;

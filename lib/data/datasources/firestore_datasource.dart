@@ -132,7 +132,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
     try {
       final doc = await _companiesCollection.doc(companyId).get();
       if (!doc.exists) return null;
-      return CompanyModel.fromJson(doc.data() as Map<String, dynamic>);
+      return CompanyModel.fromJson({...(doc.data() as Map<String, dynamic>), 'id': doc.id});
     } catch (e) {
       throw Exception('기업 조회 실패: $e');
     }
@@ -183,7 +183,7 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
         print('🔍 Company: ${data['companyName']} - Category: ${data['category']} - Subcategory: ${data['subcategory']}');
       }
       return snapshot.docs.map((doc) => 
-        CompanyModel.fromJson(doc.data() as Map<String, dynamic>)
+        CompanyModel.fromJson({...(doc.data() as Map<String, dynamic>), 'id': doc.id})
       ).toList();
     } catch (e) {
       throw Exception('기업 목록 조회 실패: $e');
@@ -216,8 +216,8 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
   String _normalizeCategoryName(String category) {
     // Firebase에 저장된 카테고리 이름 매핑 (실제 Firebase 데이터 기준)
     final categoryMapping = {
-      '*금형\n*3D 프린터': '*금형 *3D 프린터', // 줄바꿈을 공백으로 변환
-      '사출\n(공병, 플라스틱 등)': '사출\n(공병, 플라스틱 등)',
+      '*금형/몰드\n*3D 프린터': '*금형/몰드\n*3D 프린터', // 줄바꿈을 공백으로 변환
+      '사출\n(공병, 플라스틱, 유리 등)': '사출\n(공병, 플라스틱, 유리 등)',
       '*표면처리\n*건조기\n(열,UV,LED)': '*표면처리\n*건조기\n(열,UV,LED)',
       '*Vision\n(비전)\n*Robot\n(무인화)': '*Vision\n(비전)\n*Robot\n(무인화)',
       '*유공압\n*모터': '*유공압\n*모터',
@@ -478,12 +478,14 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
     try {
       final snapshot = await _favoritesCollection
           .where('userId', isEqualTo: userId)
-          .orderBy('createdAt', descending: true)
           .get();
       
-      return snapshot.docs.map((doc) => 
-        FavoriteModel.fromJson(doc.data() as Map<String, dynamic>)
-      ).toList();
+      final favorites = snapshot.docs
+          .map((doc) => FavoriteModel.fromJson(doc.data() as Map<String, dynamic>))
+          .toList();
+
+      favorites.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return favorites;
     } catch (e) {
       throw Exception('좋아요 목록 조회 실패: $e');
     }
@@ -508,56 +510,33 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
     try {
       print('🔍 StreamUserPosts in datasource called for userId: $userId');
       
-      // 먼저 userId로 조회
+      // 정확히 userId와 일치하는 게시글만 조회 (본인 게시글만)
       return _postsCollection
           .where('companyId', isEqualTo: userId)
           .snapshots()
-          .asyncMap((snapshot) async {
+          .map((snapshot) {
             print('📊 Posts snapshot received: ${snapshot.docs.length} documents');
             
-            // userId로 조회한 결과가 없으면 "unknown"으로도 조회 (기존 데이터 호환성)
-            if (snapshot.docs.isEmpty) {
-              print('⚠️ No posts found with companyId: $userId, trying "unknown"');
-              final unknownSnapshot = await _postsCollection
-                  .where('companyId', isEqualTo: 'unknown')
-                  .get();
-              print('📊 Unknown posts found: ${unknownSnapshot.docs.length} documents');
-              
-              final allDocs = <QueryDocumentSnapshot>[];
-              allDocs.addAll(snapshot.docs);
-              allDocs.addAll(unknownSnapshot.docs);
-              
-              final posts = allDocs.map((doc) {
-                try {
-                  print('📄 Processing post doc: ${doc.id}');
-                  final data = doc.data() as Map<String, dynamic>;
-                  print('📄 Post data: $data');
-                  return PostModel.fromJson({...data, 'id': doc.id});
-                } catch (e) {
-                  print('❌ Error processing post doc ${doc.id}: $e');
-                  print('📄 Doc data: ${doc.data()}');
+            // 정확히 userId와 일치하는 게시글만 반환 (본인 게시글만)
+            final posts = snapshot.docs.map((doc) {
+              try {
+                final data = doc.data() as Map<String, dynamic>;
+                // companyId가 userId와 일치하는지 다시 한 번 확인
+                final postCompanyId = data['companyId'] as String?;
+                if (postCompanyId != userId) {
+                  print('⚠️ Post ${doc.id} has different companyId: $postCompanyId (expected: $userId)');
                   return null;
                 }
-              }).where((post) => post != null).cast<PostModel>().toList();
-              
-              // 클라이언트 사이드에서 정렬
-              posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-              return posts;
-            }
-            
-            // userId로 조회한 결과가 있으면 그대로 반환
-            return snapshot.docs.map((doc) {
-              try {
-                print('📄 Processing post doc: ${doc.id}');
-                final data = doc.data() as Map<String, dynamic>;
-                print('📄 Post data: $data');
                 return PostModel.fromJson({...data, 'id': doc.id});
               } catch (e) {
                 print('❌ Error processing post doc ${doc.id}: $e');
-                print('📄 Doc data: ${doc.data()}');
                 return null;
               }
             }).where((post) => post != null).cast<PostModel>().toList();
+            
+            // 클라이언트 사이드에서 정렬
+            posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return posts;
           }).handleError((error) {
             print('❌ Error in streamUserPosts: $error');
             // 인덱스 오류인 경우 orderBy 없이 시도
@@ -571,6 +550,12 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
                     final posts = snapshot.docs.map((doc) {
                       try {
                         final data = doc.data() as Map<String, dynamic>;
+                        // companyId가 userId와 일치하는지 다시 한 번 확인
+                        final postCompanyId = data['companyId'] as String?;
+                        if (postCompanyId != userId) {
+                          print('⚠️ Post ${doc.id} has different companyId: $postCompanyId (expected: $userId)');
+                          return null;
+                        }
                         return PostModel.fromJson({...data, 'id': doc.id});
                       } catch (e) {
                         print('❌ Error processing post doc ${doc.id}: $e');

@@ -1,6 +1,6 @@
 {
-    "name": "vendor_ads",
-    "short_name": "vendor_ads",
+    "name": "제작소",
+    "short_name": "제작소",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

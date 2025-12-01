@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../data/models/category_model.dart';
 
 class PostManagementView extends StatefulWidget {
   const PostManagementView({super.key});
@@ -11,9 +12,13 @@ class PostManagementView extends StatefulWidget {
 
 class _PostManagementViewState extends State<PostManagementView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  String _selectedStatus = 'all';
+  String? _selectedCategory;
+  String? _selectedSubcategory;
+  String _selectedSort = '최신순';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  int _currentPage = 1;
+  final int _itemsPerPage = 10;
 
   @override
   void dispose() {
@@ -21,132 +26,259 @@ class _PostManagementViewState extends State<PostManagementView> {
     super.dispose();
   }
 
+  // 반응형 폰트 크기 계산
+  double _responsiveFontSize(double baseSize) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 1200) {
+      return baseSize * 0.7;
+    } else if (screenWidth < 1600) {
+      return baseSize * 0.85;
+    } else {
+      return baseSize;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '게시글 관리',
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      backgroundColor: Colors.white,
       body: Column(
         children: [
-          // 필터 및 검색
+          // 헤더 영역
           Container(
-            padding: EdgeInsets.all(16.w),
-            color: Colors.grey[50],
-            child: Column(
+            padding: EdgeInsets.all(24.w),
+            child: Row(
               children: [
-                // 검색바
-                TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: '제목, 내용으로 검색...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.r),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8.r),
-                      borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                    ),
+                Text(
+                  '게시글 관리',
+                  style: TextStyle(
+                    fontSize: _responsiveFontSize(24),
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
-                ),
-                
-                SizedBox(height: 12.h),
-                
-                // 상태 필터
-                Row(
-                  children: [
-                    Text(
-                      '상태: ',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedStatus,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 8.h,
-                          ),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('전체')),
-                          DropdownMenuItem(value: 'draft', child: Text('임시저장')),
-                          DropdownMenuItem(value: 'published', child: Text('게시중')),
-                          DropdownMenuItem(value: 'hidden', child: Text('숨김')),
-                          DropdownMenuItem(value: 'deleted', child: Text('삭제됨')),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedStatus = value!;
-                          });
-                        },
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
           
-          // 게시글 목록
+          // 필터 및 검색 영역
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // 카테고리 드롭다운
+                  SizedBox(
+                    width: 180.w,
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: '카테고리',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                      ),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('전체')),
+                        ...CategoryData.categories.map((cat) => DropdownMenuItem(
+                          value: cat.title,
+                          child: Text(
+                            cat.title.replaceAll('\n', ' '),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        )),
+                      ],
+                      selectedItemBuilder: (context) {
+                        return [
+                          const Text('전체', overflow: TextOverflow.ellipsis),
+                          ...CategoryData.categories.map((cat) => Text(
+                            cat.title.replaceAll('\n', ' '),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          )),
+                        ];
+                      },
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedCategory = value;
+                          _selectedSubcategory = null;
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  // 하위카테고리 드롭다운
+                  SizedBox(
+                    width: 180.w,
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedSubcategory,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: '하위카테고리',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                      ),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('전체')),
+                        if (_selectedCategory != null)
+                          ..._getSubcategories().map((sub) => DropdownMenuItem(
+                            value: sub,
+                            child: Text(
+                              sub.replaceAll('\n', ' '),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          )),
+                      ],
+                      selectedItemBuilder: (context) {
+                        return [
+                          const Text('전체', overflow: TextOverflow.ellipsis),
+                          if (_selectedCategory != null)
+                            ..._getSubcategories().map((sub) => Text(
+                              sub.replaceAll('\n', ' '),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            )),
+                        ];
+                      },
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedSubcategory = value;
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  // 정렬 드롭다운
+                  SizedBox(
+                    width: 120.w,
+                    child: DropdownButtonFormField<String>(
+                      value: _selectedSort,
+                      decoration: InputDecoration(
+                        labelText: '정렬',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: '최신순', child: Text('최신순')),
+                        DropdownMenuItem(value: '오래된순', child: Text('오래된순')),
+                        DropdownMenuItem(value: '조회수순', child: Text('조회수순')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedSort = value!;
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  // 검색바
+                  SizedBox(
+                    width: 300.w,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: '검색',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(4.r),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                          _currentPage = 1;
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _currentPage = 1;
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey[300],
+                      foregroundColor: Colors.black87,
+                      elevation: 0,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 8.h,
+                      ),
+                    ),
+                    child: Text(
+                      '검색',
+                      style: TextStyle(fontSize: _responsiveFontSize(12)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // 게시글 테이블
           Expanded(
-            child: _buildPostList(),
+            child: _buildPostTable(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPostList() {
+  List<String> _getSubcategories() {
+    if (_selectedCategory == null) return [];
+    final category = CategoryData.categories.firstWhere(
+      (cat) => cat.title == _selectedCategory,
+      orElse: () => CategoryModel(title: '', subcategories: []),
+    );
+    return category.subcategories;
+  }
+
+  Widget _buildPostTable() {
     Query query = _firestore.collection('posts');
 
-    // 상태 필터 적용
-    if (_selectedStatus != 'all') {
-      query = query.where('status', isEqualTo: _selectedStatus);
+    // 카테고리 필터
+    if (_selectedCategory != null) {
+      query = query.where('category', isEqualTo: _selectedCategory);
+    }
+    if (_selectedSubcategory != null) {
+      query = query.where('subcategory', isEqualTo: _selectedSubcategory);
     }
 
-    // 최신순 정렬
-    query = query.orderBy('createdAt', descending: true);
+    // 정렬
+    if (_selectedSort == '최신순') {
+      query = query.orderBy('createdAt', descending: true);
+    } else if (_selectedSort == '오래된순') {
+      query = query.orderBy('createdAt', descending: false);
+    } else if (_selectedSort == '조회수순') {
+      query = query.orderBy('viewCount', descending: true);
+    }
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -157,23 +289,9 @@ class _PostManagementViewState extends State<PostManagementView> {
 
         if (snapshot.hasError) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 48.sp,
-                  color: Colors.red[400],
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  '게시글 목록을 불러오는 중 오류가 발생했습니다.',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: Colors.red,
-                  ),
-                ),
-              ],
+            child: Text(
+              '오류가 발생했습니다: ${snapshot.error}',
+              style: TextStyle(fontSize: _responsiveFontSize(12), color: Colors.red),
             ),
           );
         }
@@ -186,405 +304,317 @@ class _PostManagementViewState extends State<PostManagementView> {
           
           final data = doc.data() as Map<String, dynamic>;
           final title = data['title']?.toString().toLowerCase() ?? '';
-          final content = data['content']?.toString().toLowerCase() ?? '';
+          final equipmentName = data['equipmentName']?.toString().toLowerCase() ?? '';
           final query = _searchQuery.toLowerCase();
           
-          return title.contains(query) || content.contains(query);
+          return title.contains(query) || equipmentName.contains(query);
         }).toList();
 
         if (filteredPosts.isEmpty) {
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.article_outlined,
-                  size: 48.sp,
-                  color: Colors.grey[400],
-                ),
-                SizedBox(height: 16.h),
-                Text(
-                  _searchQuery.isEmpty ? '등록된 게시글이 없습니다.' : '검색 결과가 없습니다.',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
+            child: Text(
+              _searchQuery.isEmpty ? '등록된 게시글이 없습니다.' : '검색 결과가 없습니다.',
+              style: TextStyle(fontSize: _responsiveFontSize(14), color: Colors.grey[600]),
             ),
           );
         }
 
-        return ListView.builder(
-          padding: EdgeInsets.all(16.w),
-          itemCount: filteredPosts.length,
-          itemBuilder: (context, index) {
-            final postDoc = filteredPosts[index];
-            final postData = postDoc.data() as Map<String, dynamic>;
-            
-            return _buildPostCard(postDoc.id, postData);
-          },
+        // 페이지네이션 계산
+        final totalPages = (filteredPosts.length / _itemsPerPage).ceil();
+        final startIndex = (_currentPage - 1) * _itemsPerPage;
+        final endIndex = startIndex + _itemsPerPage;
+        final paginatedPosts = filteredPosts.sublist(
+          startIndex,
+          endIndex > filteredPosts.length ? filteredPosts.length : endIndex,
+        );
+
+        return Column(
+          children: [
+            // 테이블
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.symmetric(horizontal: 24.w),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: SingleChildScrollView(
+                  child: Table(
+                    columnWidths: {
+                      0: FlexColumnWidth(2),
+                      1: FlexColumnWidth(1.5),
+                      2: FlexColumnWidth(1.5),
+                      3: FlexColumnWidth(2),
+                      4: FlexColumnWidth(1.5),
+                      5: FlexColumnWidth(2),
+                      6: FlexColumnWidth(1),
+                    },
+                    children: [
+                      // 헤더
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(8.r),
+                            topRight: Radius.circular(8.r),
+                          ),
+                        ),
+                        children: [
+                          _buildHeaderCell('카테고리'),
+                          _buildHeaderCell('기업명'),
+                          _buildHeaderCell('게시글명'),
+                          _buildHeaderCell('작성일'),
+                          _buildHeaderCell('광고 유형'),
+                          _buildHeaderCell('광고기한'),
+                          _buildHeaderCell('자세히보기'),
+                        ],
+                      ),
+                      // 데이터 행
+                      ...paginatedPosts.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final postDoc = entry.value;
+                        final postData = postDoc.data() as Map<String, dynamic>;
+                        return _buildPostRow(
+                          startIndex + index + 1,
+                          postDoc.id,
+                          postData,
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // 페이지네이션
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 16.h),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: _currentPage > 1
+                        ? () {
+                            setState(() {
+                              _currentPage--;
+                            });
+                          }
+                        : null,
+                  ),
+                  ...List.generate(
+                    totalPages > 10 ? 10 : totalPages,
+                    (index) {
+                      final pageNum = index + 1;
+                      final isCurrentPage = _currentPage == pageNum;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _currentPage = pageNum;
+                          });
+                        },
+                        child: Container(
+                          margin: EdgeInsets.symmetric(horizontal: 4.w),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12.w,
+                            vertical: 8.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isCurrentPage ? Colors.grey[600] : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: Text(
+                            '$pageNum',
+                            style: TextStyle(
+                              fontSize: _responsiveFontSize(12),
+                              color: isCurrentPage ? Colors.white : Colors.black87,
+                              fontWeight: isCurrentPage ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _currentPage < totalPages
+                        ? () {
+                            setState(() {
+                              _currentPage++;
+                            });
+                          }
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildPostCard(String postId, Map<String, dynamic> postData) {
-    final title = postData['title'] ?? '제목 없음';
-    final content = postData['content'] ?? '';
-    final status = postData['status'] ?? 'draft';
-    final createdAt = postData['createdAt'] as Timestamp?;
-    final viewCount = postData['viewCount'] ?? 0;
-    final isPremium = postData['isPremium'] ?? false;
-    final images = List<String>.from(postData['images'] ?? []);
-
-    return Card(
-      margin: EdgeInsets.only(bottom: 12.h),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.r),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // 이미지
-                if (images.isNotEmpty) ...[
-                  Container(
-                    width: 60.w,
-                    height: 60.h,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(4.r),
-                      color: Colors.grey[200],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4.r),
-                      child: Image.network(
-                        images.first,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.grey[300],
-                            child: Icon(
-                              Icons.image,
-                              color: Colors.grey[500],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                ],
-                
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: TextStyle(
-                                fontSize: 16.sp,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (isPremium) ...[
-                            SizedBox(width: 8.w),
-                            Container(
-                              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4.r),
-                              ),
-                              child: Text(
-                                '프리미엄',
-                                style: TextStyle(
-                                  fontSize: 10.sp,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        content.length > 100 ? '${content.substring(0, 100)}...' : content,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: Colors.grey[600],
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            
-            SizedBox(height: 12.h),
-            
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4.r),
-                  ),
-                  child: Text(
-                    _getStatusText(status),
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w500,
-                      color: _getStatusColor(status),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Icon(
-                  Icons.visibility,
-                  size: 14.sp,
-                  color: Colors.grey[600],
-                ),
-                SizedBox(width: 2.w),
-                Text(
-                  '$viewCount',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  createdAt != null
-                      ? _formatDate(createdAt.toDate())
-                      : '날짜 정보 없음',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-            
-            SizedBox(height: 12.h),
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => _showPostDetails(postId, postData),
-                  child: Text(
-                    '상세보기',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: const Color(0xFF1E3A5F),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                if (status == 'draft') ...[
-                  TextButton(
-                    onPressed: () => _updatePostStatus(postId, 'published'),
-                    child: Text(
-                      '승인',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ),
-                ],
-                if (status == 'published') ...[
-                  TextButton(
-                    onPressed: () => _updatePostStatus(postId, 'hidden'),
-                    child: Text(
-                      '숨김',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: Colors.orange,
-                      ),
-                    ),
-                  ),
-                ],
-                SizedBox(width: 8.w),
-                TextButton(
-                  onPressed: () => _updatePostStatus(postId, 'deleted'),
-                  child: Text(
-                    '삭제',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: Colors.red,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+  Widget _buildHeaderCell(String text) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: _responsiveFontSize(12),
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
         ),
       ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'draft':
-        return Colors.grey;
-      case 'published':
-        return Colors.green;
-      case 'hidden':
-        return Colors.orange;
-      case 'deleted':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'draft':
-        return '임시저장';
-      case 'published':
-        return '게시중';
-      case 'hidden':
-        return '숨김';
-      case 'deleted':
-        return '삭제됨';
-      default:
-        return '알 수 없음';
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
-  }
-
-  void _showPostDetails(String postId, Map<String, dynamic> postData) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('게시글 상세 정보'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('제목', postData['title'] ?? '정보 없음'),
-              _buildDetailRow('내용', postData['content'] ?? '정보 없음'),
-              _buildDetailRow('상태', _getStatusText(postData['status'] ?? 'unknown')),
-              _buildDetailRow('조회수', '${postData['viewCount'] ?? 0}'),
-              _buildDetailRow('프리미엄', postData['isPremium'] == true ? '예' : '아니오'),
-              if (postData['category'] != null)
-                _buildDetailRow('카테고리', postData['category']),
-              if (postData['equipmentName'] != null)
-                _buildDetailRow('장비명', postData['equipmentName']),
-              _buildDetailRow(
-                '작성일',
-                postData['createdAt'] != null
-                    ? _formatDate((postData['createdAt'] as Timestamp).toDate())
-                    : '정보 없음',
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
-          ),
-        ],
-      ),
+  TableRow _buildPostRow(int index, String postId, Map<String, dynamic> postData) {
+    final category = _formatCategory(postData);
+    final companyName = _getCompanyName(postData['companyId'] ?? '');
+    final postName = postData['equipmentName'] ?? postData['title'] ?? '정보 없음';
+    final createdAt = _formatDate(postData['createdAt']);
+    final adType = _getAdType(postData);
+    final adPeriod = _getAdPeriod(postData);
+    
+    return TableRow(
+      children: [
+        _buildCell(category),
+        _buildCell(companyName),
+        _buildCell(postName),
+        _buildCell(createdAt),
+        _buildCell(adType),
+        _buildCell(adPeriod),
+        _buildCell('자세히 보기', isLink: true, postId: postId),
+      ],
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80.w,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[700],
+  Widget _buildCell(String text, {bool isLink = false, String? postId}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+      child: isLink
+          ? GestureDetector(
+              onTap: () {
+                // TODO: 게시글 상세보기 페이지로 이동
+              },
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: _responsiveFontSize(12),
+                  color: Colors.blue,
+                  decoration: TextDecoration.underline,
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
+            )
+          : Text(
+              text,
               style: TextStyle(
-                fontSize: 14.sp,
+                fontSize: _responsiveFontSize(12),
                 color: Colors.black87,
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 
-  void _updatePostStatus(String postId, String newStatus) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('게시글 상태 변경'),
-        content: Text('게시글 상태를 "${_getStatusText(newStatus)}"로 변경하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await _firestore.collection('posts').doc(postId).update({
-                  'status': newStatus,
-                  'updatedAt': FieldValue.serverTimestamp(),
-                });
-                
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('게시글 상태가 변경되었습니다.'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('상태 변경 중 오류가 발생했습니다: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('확인'),
-          ),
-        ],
-      ),
-    );
+  String _formatCategory(Map<String, dynamic> postData) {
+    final category = postData['category'] ?? '';
+    final subcategory = postData['subcategory'] ?? '';
+    
+    if (category.isEmpty && subcategory.isEmpty) {
+      return '-';
+    }
+    
+    if (subcategory.isNotEmpty) {
+      return '$category > $subcategory';
+    }
+    
+    return category;
+  }
+
+  String _getCompanyName(String companyId) {
+    // TODO: Firestore에서 companyId로 기업명 조회
+    // 임시로 companyId 반환
+    return companyId.isNotEmpty ? companyId : '-';
+  }
+
+  String _formatDate(dynamic dateValue) {
+    if (dateValue == null) return '정보 없음';
+    
+    try {
+      DateTime date;
+      if (dateValue is Timestamp) {
+        date = dateValue.toDate();
+      } else if (dateValue is DateTime) {
+        date = dateValue;
+      } else if (dateValue is String) {
+        date = DateTime.parse(dateValue);
+      } else {
+        return '정보 없음';
+      }
+      
+      return '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}.${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return '정보 없음';
+    }
+  }
+
+  String _getAdType(Map<String, dynamic> postData) {
+    final isPremium = postData['isPremium'] ?? false;
+    final premiumExpiryDate = postData['premiumExpiryDate'];
+    
+    if (isPremium && premiumExpiryDate != null) {
+      final expiry = _parseDate(premiumExpiryDate);
+      if (expiry != null && expiry.isAfter(DateTime.now())) {
+        return '프리미엄';
+      }
+    }
+    
+    final adPayment = postData['adPayment'] ?? 0;
+    if (adPayment > 0) {
+      return '스탠다드';
+    }
+    
+    return '-';
+  }
+
+  String _getAdPeriod(Map<String, dynamic> postData) {
+    final isPremium = postData['isPremium'] ?? false;
+    final premiumExpiryDate = postData['premiumExpiryDate'];
+    final createdAt = _parseDate(postData['createdAt']);
+    
+    if (isPremium && premiumExpiryDate != null && createdAt != null) {
+      final expiry = _parseDate(premiumExpiryDate);
+      if (expiry != null) {
+        final startDate = '${createdAt.year}.${createdAt.month.toString().padLeft(2, '0')}.${createdAt.day.toString().padLeft(2, '0')}';
+        final endDate = '${expiry.year}.${expiry.month.toString().padLeft(2, '0')}.${expiry.day.toString().padLeft(2, '0')}';
+        return '$startDate ~ $endDate';
+      }
+    }
+    
+    final adPayment = postData['adPayment'] ?? 0;
+    if (adPayment > 0 && createdAt != null) {
+      final endDate = createdAt.add(const Duration(days: 30));
+      final startDate = '${createdAt.year}.${createdAt.month.toString().padLeft(2, '0')}.${createdAt.day.toString().padLeft(2, '0')}';
+      final endDateStr = '${endDate.year}.${endDate.month.toString().padLeft(2, '0')}.${endDate.day.toString().padLeft(2, '0')}';
+      return '$startDate ~ $endDateStr';
+    }
+    
+    return '-';
+  }
+
+  DateTime? _parseDate(dynamic dateValue) {
+    if (dateValue == null) return null;
+    
+    try {
+      if (dateValue is Timestamp) {
+        return dateValue.toDate();
+      } else if (dateValue is DateTime) {
+        return dateValue;
+      } else if (dateValue is String) {
+        return DateTime.parse(dateValue);
+      }
+    } catch (e) {
+      return null;
+    }
+    return null;
   }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vendor Ads</string>
+    <string name="app_name">제작소</string>
     <string name="naver_client_id">6VBjy8uAYG4OQuVORB0s</string>
     <string name="naver_client_secret">2IwucUmbaX</string>
-    <string name="naver_client_name">Vendor Ads</string>
+    <string name="naver_client_name">제작소</string>
 </resources>

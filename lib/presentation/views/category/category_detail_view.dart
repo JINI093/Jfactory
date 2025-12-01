@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../data/models/category_model.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../viewmodels/company_viewmodel.dart';
+import '../../viewmodels/favorite_viewmodel.dart';
 
 class CategoryDetailView extends StatefulWidget {
   final String categoryTitle;
@@ -21,7 +23,10 @@ class CategoryDetailView extends StatefulWidget {
 class _CategoryDetailViewState extends State<CategoryDetailView> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedSubcategory;
-  String? _selectedSubSubcategory;
+
+  String _formatLabel(String value) {
+    return value.replaceAll('*', '').trim();
+  }
 
   @override
   void initState() {
@@ -30,6 +35,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         _loadCompanies();
+        context.read<FavoriteViewModel>().loadFavoriteCompanies();
       } catch (e, stackTrace) {
         print('🔥 Error in initState postFrameCallback: $e');
         print('🔥 Stack trace: $stackTrace');
@@ -47,7 +53,6 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
     try {
       print('🔥 _loadCompanies called - categoryTitle: ${widget.categoryTitle}');
       final companyViewModel = context.read<CompanyViewModel>();
-      print('🔥 CompanyViewModel found: ${companyViewModel != null}');
       
       companyViewModel.loadCompaniesByCategory(
         widget.categoryTitle,
@@ -258,7 +263,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Text(
-        '${widget.categoryTitle} >',
+        '${_formatLabel(widget.categoryTitle)} >',
         style: TextStyle(
           fontSize: 18.sp,
           fontWeight: FontWeight.bold,
@@ -350,12 +355,17 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
           onTap: () {
             // 3단계 카테고리가 있는 경우 별도 페이지로 이동
             if (CategoryData.hasSubSubcategories(widget.categoryTitle, subcategory)) {
-              context.push('/category/${Uri.encodeComponent(widget.categoryTitle)}/subcategory/${Uri.encodeComponent(subcategory)}');
+              context.pushNamed(
+                'subcategory_detail',
+                pathParameters: {
+                  'categoryTitle': widget.categoryTitle,
+                  'subcategoryTitle': subcategory,
+                },
+              );
             } else {
               // 3단계 카테고리가 없는 경우 기존 방식으로 처리
               setState(() {
                 _selectedSubcategory = _selectedSubcategory == subcategory ? null : subcategory;
-                _selectedSubSubcategory = null;
               });
               final companyViewModel = context.read<CompanyViewModel>();
               companyViewModel.loadCompaniesByCategory(
@@ -368,7 +378,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
             child: Padding(
               padding: EdgeInsets.all(4.w),
               child: Text(
-                subcategory,
+                _formatLabel(subcategory),
                 style: TextStyle(
                   fontSize: fontSize,
                   fontWeight: FontWeight.bold,
@@ -380,131 +390,6 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSubSubcategoriesGrid(CategoryModel category) {
-    print('🔥 _buildSubSubcategoriesGrid called with subcategory: ${_selectedSubcategory}');
-    final subSubcategories = CategoryData.getSubSubcategories(widget.categoryTitle, _selectedSubcategory!);
-    print('🔥 Retrieved subSubcategories: $subSubcategories');
-    if (subSubcategories == null || subSubcategories.isEmpty) {
-      print('🔥 No subSubcategories found, returning empty widget');
-      return const SizedBox.shrink();
-    }
-    
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '세부 카테고리',
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 12.h),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 1.0,
-              crossAxisSpacing: 8.w,
-              mainAxisSpacing: 8.h,
-            ),
-            itemCount: subSubcategories.length,
-            itemBuilder: (context, index) {
-              return _buildSubSubcategoryCard(subSubcategories[index]);
-            },
-          ),
-          SizedBox(height: 20.h),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubSubcategoryCard(String subSubcategory) {
-    final isSelected = _selectedSubSubcategory == subSubcategory;
-    return Container(
-      decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFFE8F4FD),
-        borderRadius: BorderRadius.circular(10.r),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10.r),
-          onTap: () {
-            setState(() {
-              _selectedSubSubcategory = _selectedSubSubcategory == subSubcategory ? null : subSubcategory;
-            });
-            final companyViewModel = context.read<CompanyViewModel>();
-            companyViewModel.loadCompaniesByCategory(
-              widget.categoryTitle,
-              subcategory: _selectedSubcategory,
-              subSubcategory: _selectedSubSubcategory,
-            );
-          },
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.all(4.w),
-              child: Text(
-                subSubcategory,
-                style: TextStyle(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.white : Colors.black87,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterButtons() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      child: Row(
-        children: [
-          _buildFilterButton('하위카테고리'),
-          SizedBox(width: 8.w),
-          _buildFilterButton('절단/밴딩/절곡/용접'),
-          SizedBox(width: 8.w),
-          _buildFilterButton('사출'),
-          SizedBox(width: 8.w),
-          _buildFilterButton('금형'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterButton(String text) {
-    return Container(
-      height: 32.h,
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE3F2FD),
-        borderRadius: BorderRadius.circular(16.r),
-      ),
-      child: Center(
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 12.sp,
-            color: const Color(0xFF1976D2),
-            fontWeight: FontWeight.w500,
           ),
         ),
       ),
@@ -581,7 +466,10 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   Widget _buildPremiumCard(CompanyEntity company) {
-    return Container(
+    return Consumer<FavoriteViewModel>(
+      builder: (context, favoriteViewModel, _) {
+        final isFavorite = favoriteViewModel.isFavorite(company.id);
+        return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12.r),
@@ -624,9 +512,45 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                 top: 8.h,
                 right: 8.w,
                 child: GestureDetector(
-                  onTap: () {
-                    final companyViewModel = context.read<CompanyViewModel>();
-                    companyViewModel.toggleFavorite(company.id);
+                  onTap: () async {
+                    try {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user == null) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('좋아요 기능은 로그인 후 이용 가능합니다.'),
+                            duration: Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        return;
+                      }
+                      final result = await favoriteViewModel.toggleFavorite(company.id);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            result
+                                ? '${company.companyName}을(를) 좋아요에 추가했습니다.'
+                                : '${company.companyName}을(를) 좋아요에서 제거했습니다.',
+                          ),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    } catch (e, stackTrace) {
+                      debugPrint('좋아요 토글 실패 (프리미엄 카드): $e');
+                      debugPrintStack(stackTrace: stackTrace);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(e.toString()),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
                   },
                   child: Container(
                     width: 32.w,
@@ -636,8 +560,8 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      Icons.favorite_border,
-                      color: Colors.red,
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: isFavorite ? Colors.red : Colors.grey,
                       size: 18.sp,
                     ),
                   ),
@@ -662,7 +586,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  company.greeting ?? company.subcategory,
+                  _formatLabel(company.greeting ?? company.subcategory),
                   style: TextStyle(
                     fontSize: 11.sp,
                     color: Colors.grey[500],
@@ -675,6 +599,8 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
           ),
         ],
       ),
+        );
+      },
     );
   }
 
@@ -785,7 +711,10 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
   }
 
   Widget _buildGeneralPostCard(CompanyEntity company) {
-    return Container(
+    return Consumer<FavoriteViewModel>(
+      builder: (context, favoriteViewModel, _) {
+        final isFavorite = favoriteViewModel.isFavorite(company.id);
+        return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8.r),
@@ -848,13 +777,49 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
                   top: 6.h,
                   right: 6.w,
                   child: GestureDetector(
-                    onTap: () {
-                      final companyViewModel = context.read<CompanyViewModel>();
-                      companyViewModel.toggleFavorite(company.id);
+                    onTap: () async {
+                      try {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user == null) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('좋아요 기능은 로그인 후 이용 가능합니다.'),
+                                duration: Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                            return;
+                          }
+                          final result = await favoriteViewModel.toggleFavorite(company.id);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              result
+                                  ? '${company.companyName}을(를) 좋아요에 추가했습니다.'
+                                  : '${company.companyName}을(를) 좋아요에서 제거했습니다.',
+                            ),
+                            duration: const Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      } catch (e, stackTrace) {
+                        debugPrint('좋아요 토글 실패 (일반 카드): $e');
+                        debugPrintStack(stackTrace: stackTrace);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(e.toString()),
+                            duration: Duration(seconds: 2),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     },
                     child: Icon(
-                      Icons.favorite_border,
-                      color: Colors.red,
+                      isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: isFavorite ? Colors.red : Colors.grey,
                       size: 16.sp,
                     ),
                   ),
@@ -866,7 +831,7 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
             width: double.infinity,
             padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 6.h),
             child: Text(
-              company.subcategory,
+              _formatLabel(company.subcategory),
               style: TextStyle(
                 fontSize: 10.sp,
                 color: Colors.black87,
@@ -879,6 +844,8 @@ class _CategoryDetailViewState extends State<CategoryDetailView> {
           ),
         ],
       ),
+        );
+      },
     );
   }
 

@@ -158,7 +158,7 @@ class AppProviders {
         toggleFavoriteUseCase: context.read<ToggleFavoriteUseCase>(),
       ),
       update: (context, getFavoriteCompaniesUseCase, toggleFavoriteUseCase, previous) =>
-        previous ?? FavoriteViewModel(
+        FavoriteViewModel(
           getFavoriteCompaniesUseCase: getFavoriteCompaniesUseCase,
           toggleFavoriteUseCase: toggleFavoriteUseCase,
         ),

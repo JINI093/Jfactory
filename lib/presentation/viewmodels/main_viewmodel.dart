@@ -10,6 +10,7 @@ class MainViewModel extends ChangeNotifier {
   List<Map<String, String>> _selectedLocations = [];
   String? _selectedCategory;
   String? _selectedSubcategory;
+  String _searchQuery = '';
   bool _isLoading = false;
   String? _error;
   
@@ -17,6 +18,7 @@ class MainViewModel extends ChangeNotifier {
   List<Map<String, String>> get selectedLocations => _selectedLocations;
   String? get selectedCategory => _selectedCategory;
   String? get selectedSubcategory => _selectedSubcategory;
+  String get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   String? get error => _error;
   
@@ -43,16 +45,26 @@ class MainViewModel extends ChangeNotifier {
       
       // 세부카테고리 필터 적용
       if (subcategory != null && subcategory.isNotEmpty && 
-          subcategory != '전체' && subcategory != '전체 하위카테고리') {
-        String normalize(String text) {
-          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-        }
-        
-        final normalizedCompany = normalize(company.subcategory);
-        final normalizedSelected = normalize(subcategory);
-        
-        if (normalizedCompany != normalizedSelected) {
-          return false;
+          subcategory != '전체') {
+        // "전체 하위카테고리" 선택 시 해당 카테고리의 모든 하위 카테고리 포함
+        if (subcategory == '전체 하위카테고리') {
+          // 메인 카테고리만 필터링 (모든 하위 카테고리 포함)
+          // 이미 위에서 카테고리 필터가 적용되었으므로 여기서는 추가 필터링 불필요
+        } else {
+          // 특정 세부카테고리 선택 시
+          String normalize(String text) {
+            return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+          }
+          
+          final normalizedCompany = normalize(company.subcategory);
+          final normalizedSelected = normalize(subcategory);
+          
+          // 정확한 매칭 또는 포함 관계 확인
+          if (normalizedCompany != normalizedSelected && 
+              !normalizedCompany.contains(normalizedSelected) &&
+              !normalizedSelected.contains(normalizedCompany)) {
+            return false;
+          }
         }
       }
       
@@ -110,11 +122,6 @@ class MainViewModel extends ChangeNotifier {
     }
   }
   
-  void toggleFavorite(String companyId) {
-    // 즐겨찾기 기능은 나중에 구현
-    debugPrint('Toggle favorite for company: $companyId');
-    notifyListeners();
-  }
 
   void updateLocationFilter(List<Map<String, String>> locations) {
     _selectedLocations = locations;
@@ -133,6 +140,13 @@ class MainViewModel extends ChangeNotifier {
     _selectedLocations = [];
     _selectedCategory = null;
     _selectedSubcategory = null;
+    _searchQuery = '';
+    _applyAllFilters();
+    notifyListeners();
+  }
+
+  void searchCompanies(String query) {
+    _searchQuery = query.trim();
     _applyAllFilters();
     notifyListeners();
   }
@@ -155,16 +169,26 @@ class MainViewModel extends ChangeNotifier {
       
       // 세부카테고리 필터 적용
       if (_selectedSubcategory != null && _selectedSubcategory!.isNotEmpty && 
-          _selectedSubcategory != '전체' && _selectedSubcategory != '전체 하위카테고리') {
-        String normalize(String text) {
-          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-        }
-        
-        final normalizedCompany = normalize(company.subcategory);
-        final normalizedSelected = normalize(_selectedSubcategory!);
-        
-        if (normalizedCompany != normalizedSelected) {
-          return false;
+          _selectedSubcategory != '전체') {
+        // "전체 하위카테고리" 선택 시 해당 카테고리의 모든 하위 카테고리 포함
+        if (_selectedSubcategory == '전체 하위카테고리') {
+          // 메인 카테고리만 필터링 (모든 하위 카테고리 포함)
+          // 이미 위에서 카테고리 필터가 적용되었으므로 여기서는 추가 필터링 불필요
+        } else {
+          // 특정 세부카테고리 선택 시
+          String normalize(String text) {
+            return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+          }
+          
+          final normalizedCompany = normalize(company.subcategory);
+          final normalizedSelected = normalize(_selectedSubcategory!);
+          
+          // 정확한 매칭 또는 포함 관계 확인
+          if (normalizedCompany != normalizedSelected && 
+              !normalizedCompany.contains(normalizedSelected) &&
+              !normalizedSelected.contains(normalizedCompany)) {
+            return false;
+          }
         }
       }
       
@@ -186,6 +210,17 @@ class MainViewModel extends ChangeNotifier {
         });
         
         if (!matchesLocation) return false;
+      }
+      
+      // 검색어 필터링
+      if (_searchQuery.isNotEmpty) {
+        final searchLower = _searchQuery.toLowerCase();
+        final matchesSearch = company.companyName.toLowerCase().contains(searchLower) ||
+                            company.category.toLowerCase().contains(searchLower) ||
+                            company.subcategory.toLowerCase().contains(searchLower) ||
+                            (company.greeting?.toLowerCase().contains(searchLower) ?? false) ||
+                            (company.address.toLowerCase().contains(searchLower));
+        if (!matchesSearch) return false;
       }
       
       return true;

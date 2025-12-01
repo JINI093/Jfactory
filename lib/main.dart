@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -92,7 +91,7 @@ class MyApp extends StatelessWidget {
         splitScreenMode: true,
         builder: (context, child) {
           return MaterialApp.router(
-            title: 'Vendor Ads',
+            title: '제작소',
             theme: AppTheme.lightTheme,
             routerConfig: AppRouter.router,
             debugShowCheckedModeBanner: false,

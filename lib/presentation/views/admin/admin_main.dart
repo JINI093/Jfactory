@@ -2,267 +2,207 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'user_management_view.dart';
 import 'post_management_view.dart';
-import 'post_registration_view.dart';
-import 'ad_management_view.dart';
+import 'post_registration_view_new.dart';
+import 'company_ad_management_view.dart';
+import 'banner_ad_management_view.dart';
 import 'inquiry_management_view.dart';
+import 'faq_management_view.dart';
 
-class AdminMainView extends StatelessWidget {
+class AdminMainView extends StatefulWidget {
   const AdminMainView({super.key});
+
+  @override
+  State<AdminMainView> createState() => _AdminMainViewState();
+}
+
+class _AdminMainViewState extends State<AdminMainView> {
+  int _selectedIndex = 0;
+  int? _selectedSubIndex; // 서브메뉴 인덱스
+
+  final List<Widget> _mainPages = [
+    const UserManagementView(),
+    const PostManagementView(),
+    const PostRegistrationViewNew(),
+    const CompanyAdManagementView(), // 광고 관리 - 기업광고 관리
+    const InquiryManagementView(), // 문의 관리 - 1:1문의
+  ];
+
+  Widget get _currentPage {
+    if (_selectedIndex == 3 && _selectedSubIndex == 1) {
+      return const BannerAdManagementView();
+    } else if (_selectedIndex == 4 && _selectedSubIndex == 1) {
+      return const FaqManagementView();
+    }
+    return _mainPages[_selectedIndex];
+  }
+
+  // 반응형 폰트 크기 계산
+  double _responsiveFontSize(double baseSize) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 기본 기준: 1920px (데스크톱)
+    // 화면이 작을수록 폰트 크기 감소
+    if (screenWidth < 1200) {
+      return baseSize * 0.7;
+    } else if (screenWidth < 1600) {
+      return baseSize * 0.85;
+    } else {
+      return baseSize;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '관리자 페이지',
-          style: TextStyle(
-            fontSize: 20.sp,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: const Color(0xFF1E3A5F),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              // 로그아웃 로직
-              Navigator.of(context).pop();
-            },
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF1E3A5F).withOpacity(0.1),
-              Colors.white,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: EdgeInsets.all(20.w),
+      body: Row(
+        children: [
+          // 사이드바
+          Container(
+            width: 200.w,
+            color: Colors.grey[100],
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 헤더
+                // 로고 영역
                 Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(20.w),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12.r),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 1,
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 50.w,
-                            height: 50.h,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1E3A5F),
-                              borderRadius: BorderRadius.circular(25.r),
-                            ),
-                            child: Icon(
-                              Icons.admin_panel_settings,
-                              color: Colors.white,
-                              size: 24.sp,
-                            ),
-                          ),
-                          SizedBox(width: 16.w),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '관리자 대시보드',
-                                  style: TextStyle(
-                                    fontSize: 18.sp,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                SizedBox(height: 4.h),
-                                Text(
-                                  '시스템 관리 및 모니터링',
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  height: 60.h,
+                  padding: EdgeInsets.all(16.w),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Image.asset(
+                      'assets/icons/logo2.png',
+                      height: _responsiveFontSize(40),
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
-                
-                SizedBox(height: 24.h),
-                
-                // 메뉴 그리드
+                Divider(height: 1, color: Colors.grey[300]),
+                // 메뉴 리스트
                 Expanded(
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16.w,
-                    mainAxisSpacing: 16.h,
+                  child: ListView(
+                    padding: EdgeInsets.zero,
                     children: [
-                      _buildMenuCard(
-                        context,
-                        title: '회원 관리',
-                        subtitle: '사용자 계정 관리',
-                        icon: Icons.people,
-                        color: Colors.blue,
-                        onTap: () {
-                          Navigator.pushNamed(context, '/user-management');
-                        },
+                      _buildMenuItem(
+                        '회원 관리',
+                        0,
+                        Icons.people,
                       ),
-                      _buildMenuCard(
-                        context,
-                        title: '게시글 관리',
-                        subtitle: '게시글 승인 및 관리',
-                        icon: Icons.article,
-                        color: Colors.green,
-                        onTap: () {
-                          Navigator.pushNamed(context, '/post-management');
-                        },
+                      _buildMenuItem(
+                        '게시글관리',
+                        1,
+                        Icons.article,
                       ),
-                      _buildMenuCard(
-                        context,
-                        title: '게시글 등록',
-                        subtitle: '관리자 게시글 작성',
-                        icon: Icons.add_circle,
-                        color: Colors.orange,
-                        onTap: () {
-                          Navigator.pushNamed(context, '/post-registration');
-                        },
+                      _buildMenuItem(
+                        '게시글등록',
+                        2,
+                        Icons.add_circle,
                       ),
-                      _buildMenuCard(
-                        context,
-                        title: '광고 관리',
-                        subtitle: '광고 승인 및 관리',
-                        icon: Icons.campaign,
-                        color: Colors.purple,
-                        onTap: () {
-                          Navigator.pushNamed(context, '/ad-management');
-                        },
+                      _buildMenuItem(
+                        '광고 관리',
+                        3,
+                        Icons.campaign,
+                        hasSubMenu: true,
                       ),
-                      _buildMenuCard(
-                        context,
-                        title: '문의 관리',
-                        subtitle: '1:1 문의 답변',
-                        icon: Icons.support_agent,
-                        color: Colors.red,
-                        onTap: () {
-                          Navigator.pushNamed(context, '/inquiry-management');
-                        },
+                      if (_selectedIndex == 3) ...[
+                        _buildSubMenuItem(
+                          'ㄴ 기업광고 관리',
+                          3,
+                          0,
+                        ),
+                        _buildSubMenuItem(
+                          'ㄴ배너 광고 관리',
+                          3,
+                          1,
+                        ),
+                      ],
+                      _buildMenuItem(
+                        '문의 관리',
+                        4,
+                        Icons.support_agent,
+                        hasSubMenu: true,
                       ),
-                      _buildMenuCard(
-                        context,
-                        title: '통계',
-                        subtitle: '사이트 통계 보기',
-                        icon: Icons.analytics,
-                        color: Colors.teal,
-                        onTap: () {
-                          // 통계 페이지는 추후 구현
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('통계 기능은 추후 구현 예정입니다.'),
-                            ),
-                          );
-                        },
-                      ),
+                      if (_selectedIndex == 4) ...[
+                        _buildSubMenuItem(
+                          'ㄴ 1:1문의',
+                          4,
+                          0,
+                        ),
+                        _buildSubMenuItem(
+                          'ㄴ 자주 묻는 질문',
+                          4,
+                          1,
+                        ),
+                      ],
                     ],
                   ),
                 ),
               ],
             ),
           ),
+          // 메인 콘텐츠 영역
+          Expanded(
+            child: _currentPage,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMenuItem(String title, int index, IconData icon, {bool hasSubMenu = false}) {
+    final isSelected = _selectedIndex == index && _selectedSubIndex == null;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedIndex = index;
+          _selectedSubIndex = hasSubMenu ? null : null;
+        });
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+        color: isSelected ? Colors.red : Colors.transparent,
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: _responsiveFontSize(18),
+              color: isSelected ? Colors.white : Colors.black87,
+            ),
+            SizedBox(width: 12.w),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildMenuCard(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
+  Widget _buildSubMenuItem(String title, int mainIndex, int subIndex) {
+    final isSelected = _selectedIndex == mainIndex && _selectedSubIndex == subIndex;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedIndex = mainIndex;
+          _selectedSubIndex = subIndex;
+        });
+      },
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12.r),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 10,
-              offset: const Offset(0, 2),
+        padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 12.h),
+        color: isSelected ? Colors.pink : Colors.transparent,
+        child: Row(
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? Colors.red : Colors.black87,
+              ),
             ),
           ],
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(20.w),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 60.w,
-                height: 60.h,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(30.r),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 28.sp,
-                ),
-              ),
-              SizedBox(height: 16.h),
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 8.h),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
         ),
       ),
     );

@@ -6,6 +6,7 @@ class RouteNames {
   static const String companyDetail = '/company/:id';
   static const String categoryDetail = '/category/:categoryTitle';
   static const String subcategoryDetail = '/category/:categoryTitle/subcategory/:subcategoryTitle';
+  static const String subSubcategoryDetail = '/category/:categoryTitle/subcategory/:subcategoryTitle/detail/:subSubcategoryTitle';
   static const String premiumPostDetail = '/post/:postId';
   static const String postDetail = '/post-detail/:postId';
   static const String companyPage = '/company-page/:companyId';

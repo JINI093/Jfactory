@@ -212,6 +212,8 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       // 현재 위치 마커 (빨간색, 큰 사이즈)
       final currentLocationMarker = '&markers=color:red%7Csize:mid%7Clabel:ME%7C$lat,$lng';
       
+      // Google Static Maps API URL 생성
+      // 참고: URL 길이 제한은 8192자입니다
       _mapImageUrl = 'https://maps.googleapis.com/maps/api/staticmap'
           '?center=$lat,$lng'
           '&zoom=$zoom'
@@ -220,6 +222,38 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
           '$companyMarkers'
           '&maptype=roadmap'
           '&key=$googleApiKey';
+      
+      // URL 길이 확인 및 경고
+      if (_mapImageUrl!.length > 8000) {
+        debugPrint('⚠️ [2/4] 경고: 지도 URL이 너무 깁니다 (${_mapImageUrl!.length}자). Google Static Maps API는 8192자 제한이 있습니다.');
+        // 마커 수를 줄여서 URL 길이 제한
+        if (validCompanyCount > 10) {
+          debugPrint('⚠️ [2/4] 마커 수가 너무 많아 일부 마커를 제거합니다.');
+          // 마커를 다시 생성하되 최대 10개로 제한
+          String limitedCompanyMarkers = '';
+          int limitedCount = 0;
+          for (int i = 0; i < companiesToShow.length && i < 10; i++) {
+            final company = companiesToShow[i];
+            if (company.latitude != null && company.longitude != null) {
+              final markerColor = company.adPayment > 0 ? 'blue' : 'green';
+              final markerSize = company.adPayment > 0 ? 'mid' : 'small';
+              final markerLabel = company.adPayment > 0 ? 'P' : (limitedCount + 1).toString();
+              limitedCompanyMarkers += '&markers=color:$markerColor%7Csize:$markerSize%7Clabel:$markerLabel%7C${company.latitude},${company.longitude}';
+              limitedCount++;
+            }
+          }
+          companyMarkers = limitedCompanyMarkers;
+          _mapImageUrl = 'https://maps.googleapis.com/maps/api/staticmap'
+              '?center=$lat,$lng'
+              '&zoom=$zoom'
+              '&size=${width}x$height'
+              '$currentLocationMarker'
+              '$companyMarkers'
+              '&maptype=roadmap'
+              '&key=$googleApiKey';
+          debugPrint('🗺️ [2/4] 마커 수 제한 후 URL 길이: ${_mapImageUrl!.length}자');
+        }
+      }
       
       debugPrint('🗺️ [2/4] 최종 지도 URL (${_mapImageUrl!.length}자): ${_mapImageUrl!.substring(0, _mapImageUrl!.length > 200 ? 200 : _mapImageUrl!.length)}...');
       
@@ -267,12 +301,29 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
         debugPrint('⚠️ [3/4] 지도 이미지 응답 에러: ${response.statusCode}');
         debugPrint('⚠️ [3/4] 응답 본문: ${response.body}');
         
-        // 에러여도 일단 이미지를 표시해보자
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _mapLoadingError = false; // false로 설정하여 이미지 표시 시도
-          });
+        // 403 에러인 경우 API 키 문제로 간주
+        if (response.statusCode == 403) {
+          debugPrint('❌ [3/4] Google Maps Static API 403 에러: API 키가 유효하지 않거나 권한이 없습니다.');
+          debugPrint('❌ [3/4] 해결 방법:');
+          debugPrint('   1. Google Cloud Console에서 Maps Static API가 활성화되어 있는지 확인');
+          debugPrint('   2. API 키가 유효한지 확인');
+          debugPrint('   3. API 키에 Maps Static API 권한이 있는지 확인');
+          debugPrint('   4. 결제 계정이 설정되어 있는지 확인');
+          
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _mapLoadingError = true; // 에러 상태로 설정
+            });
+          }
+        } else {
+          // 다른 에러는 일단 이미지 표시 시도
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _mapLoadingError = false;
+            });
+          }
         }
       }
     } catch (e, stackTrace) {
@@ -357,26 +408,93 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
         },
         errorBuilder: (context, error, stackTrace) {
           debugPrint('❌ 지도 이미지 로드 에러: $error');
+          debugPrint('❌ 스택 트레이스: $stackTrace');
+          
+          // 에러 상태 설정
+          if (mounted) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _mapLoadingError = true;
+                });
+              }
+            });
+          }
+          
+          // 403 에러인지 확인
+          String errorMessage = '지도 이미지 로드 실패';
+          if (error.toString().contains('403') || error.toString().contains('Forbidden')) {
+            errorMessage = '지도 API 권한 오류';
+          } else if (error.toString().contains('400') || error.toString().contains('Bad Request')) {
+            errorMessage = '지도 요청 오류';
+          }
+          
           return Container(
             color: Colors.grey[100],
             child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 48.sp,
-                    color: Colors.red[400],
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.map_outlined,
+                        size: 40.sp,
+                        color: Colors.grey[400],
+                      ),
+                      SizedBox(height: 6.h),
+                      Text(
+                        errorMessage,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 220),
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 4.w,
+                          runSpacing: 4.h,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  _mapLoadingError = false;
+                                  _isLoading = true;
+                                  _mapImageUrl = null;
+                                });
+                                _initializeMap();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                textStyle: TextStyle(fontSize: 10.sp),
+                                minimumSize: Size(0, 32.h),
+                              ),
+                              child: const Text('다시 시도'),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _openGoogleMap,
+                              icon: const Icon(Icons.open_in_new, size: 12),
+                              label: const Text('지도앱'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green[600],
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+                                textStyle: TextStyle(fontSize: 10.sp),
+                                minimumSize: Size(0, 32.h),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 8.h),
-                  Text(
-                    '지도 이미지 로드 실패',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           );
@@ -450,65 +568,79 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     return Container(
       color: Colors.grey[100],
       child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.map_outlined,
-              size: 24.sp, // 작은 높이에 맞게 아이콘 크기 축소
-              color: Colors.orange[400],
-            ),
-            SizedBox(height: 8.h),
-            Text(
-              '지도를 불러올 수 없습니다',
-              style: TextStyle(
-                fontSize: 12.sp, // 폰트 크기 축소
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            SizedBox(height: 4.h),
-            Text(
-              'Google Maps API 설정을 확인해주세요',
-              style: TextStyle(
-                fontSize: 10.sp, // 폰트 크기 축소
-                color: Colors.grey[600],
-              ),
-            ),
-            SizedBox(height: 8.h),
-            Row(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _mapLoadingError = false;
-                      _isLoading = true;
-                      _mapImageUrl = null;
-                    });
-                    _initializeMap();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h), // 패딩 축소
-                    textStyle: TextStyle(fontSize: 10.sp), // 텍스트 크기 축소
-                  ),
-                  child: const Text('다시 시도'),
+                Icon(
+                  Icons.map_outlined,
+                  size: 32.sp,
+                  color: Colors.orange[400],
                 ),
-                SizedBox(width: 4.w),
-                ElevatedButton.icon(
-                  onPressed: _openNaverMap,
-                  icon: const Icon(Icons.open_in_new, size: 12),
-                  label: const Text('지도앱'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[600],
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
-                    textStyle: TextStyle(fontSize: 10.sp),
+                SizedBox(height: 6.h),
+                Text(
+                  '지도를 불러올 수 없습니다',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'Google Maps API 설정을 확인해주세요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Wrap(
+                    spacing: 4.w,
+                    runSpacing: 4.h,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _mapLoadingError = false;
+                            _isLoading = true;
+                            _mapImageUrl = null;
+                          });
+                          _initializeMap();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                          textStyle: TextStyle(fontSize: 10.sp),
+                          minimumSize: Size(0, 32.h),
+                        ),
+                        child: const Text('다시 시도'),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _openGoogleMap,
+                        icon: const Icon(Icons.open_in_new, size: 12),
+                        label: const Text('지도앱'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[600],
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+                          textStyle: TextStyle(fontSize: 10.sp),
+                          minimumSize: Size(0, 32.h),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -535,8 +667,8 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
           SizedBox(width: 4.w), // 가로 간격
           _buildControlButton(
             icon: Icons.open_in_new,
-            onTap: _openNaverMap,
-            tooltip: '지도앱에서 보기',
+            onTap: _openGoogleMap,
+            tooltip: 'Google Maps에서 보기',
           ),
         ],
       ),
@@ -578,22 +710,24 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     );
   }
 
-  Future<void> _openNaverMap() async {
+  Future<void> _openGoogleMap() async {
     final lat = _currentPosition?.latitude ?? 37.5665;
     final lng = _currentPosition?.longitude ?? 126.9780;
     
-    // 네이버지도 앱에서 열기
-    final naverMapUrl = 'nmap://place?lat=$lat&lng=$lng&name=현재위치';
-    final webUrl = 'https://map.naver.com/v5/search/현재위치/$lng,$lat';
+    // Google Maps 앱에서 열기
+    final googleMapUrl = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+    final googleMapAppUrl = 'comgooglemaps://?q=$lat,$lng';
     
     try {
-      if (await canLaunchUrl(Uri.parse(naverMapUrl))) {
-        await launchUrl(Uri.parse(naverMapUrl));
+      // 먼저 Google Maps 앱 시도
+      if (await canLaunchUrl(Uri.parse(googleMapAppUrl))) {
+        await launchUrl(Uri.parse(googleMapAppUrl));
       } else {
-        await launchUrl(Uri.parse(webUrl), mode: LaunchMode.externalApplication);
+        // 앱이 없으면 웹 버전 열기
+        await launchUrl(Uri.parse(googleMapUrl), mode: LaunchMode.externalApplication);
       }
     } catch (e) {
-      debugPrint('❌ 네이버지도 열기 실패: $e');
+      debugPrint('❌ Google Maps 열기 실패: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

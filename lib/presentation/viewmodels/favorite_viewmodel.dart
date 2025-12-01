@@ -37,6 +37,7 @@ class FavoriteViewModel extends ChangeNotifier {
 
     try {
       _favoriteCompanies = await _getFavoriteCompaniesUseCase.call(currentUser.uid);
+      debugPrint('FavoriteViewModel: loaded ${_favoriteCompanies.length} favorites');
     } catch (e) {
       _error = e.toString();
       _favoriteCompanies = [];
@@ -54,6 +55,7 @@ class FavoriteViewModel extends ChangeNotifier {
 
     try {
       final result = await _toggleFavoriteUseCase.call(currentUser.uid, companyId);
+      debugPrint('FavoriteViewModel: toggleFavorite result=$result for companyId=$companyId');
       // 좋아요 상태 변경 후 목록 새로고침
       await loadFavoriteCompanies();
       return result;
@@ -62,6 +64,10 @@ class FavoriteViewModel extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  bool isFavorite(String companyId) {
+    return _favoriteCompanies.any((company) => company.id == companyId);
   }
 
   Future<void> removeFavorite(String companyId) async {

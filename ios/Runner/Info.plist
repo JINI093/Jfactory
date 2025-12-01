@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Vendor Ads</string>
+	<string>제작소</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -83,7 +83,7 @@
 	<key>NAVER_CLIENT_ID</key>
 	<string>0Yn_U4Zvuccup1dIyQAi</string>
 	<key>NAVER_CLIENT_NAME</key>
-	<string>Vendor Ads</string>
+	<string>제작소</string>
 	<key>NAVER_CLIENT_SECRET</key>
 	<string>PYehz3hond</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -91,7 +91,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>이 앱은 내 주변의 업체를 찾기 위해 위치 정보를 사용합니다.</string>
 	<key>NidAppName</key>
-	<string>Vendor Ads</string>
+	<string>제작소</string>
 	<key>NidClientID</key>
 	<string>0Yn_U4Zvuccup1dIyQAi</string>
 	<key>NidClientSecret</key>

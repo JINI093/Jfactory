@@ -1,19 +1,26 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../data/models/category_model.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../viewmodels/company_viewmodel.dart';
+import '../../viewmodels/favorite_viewmodel.dart';
 
 class SubcategoryDetailView extends StatefulWidget {
   final String categoryTitle;
   final String subcategoryTitle;
+  final String? initialSubSubcategory;
+  final bool forceDetailView;
   
   const SubcategoryDetailView({
     super.key,
     required this.categoryTitle,
     required this.subcategoryTitle,
+    this.initialSubSubcategory,
+    this.forceDetailView = false,
   });
 
   @override
@@ -23,14 +30,17 @@ class SubcategoryDetailView extends StatefulWidget {
 class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedSubSubcategory;
+  String? _selectedSubSubSubcategory;
 
   @override
   void initState() {
     super.initState();
+    _selectedSubSubcategory = widget.initialSubSubcategory;
     print('🔥 SubcategoryDetailView initState - categoryTitle: ${widget.categoryTitle}, subcategoryTitle: ${widget.subcategoryTitle}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         _loadCompanies();
+        context.read<FavoriteViewModel>().loadFavoriteCompanies();
       } catch (e, stackTrace) {
         print('🔥 Error in initState postFrameCallback: $e');
         print('🔥 Stack trace: $stackTrace');
@@ -48,7 +58,6 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
     try {
       print('🔥 _loadCompanies called - categoryTitle: ${widget.categoryTitle}, subcategoryTitle: ${widget.subcategoryTitle}');
       final companyViewModel = context.read<CompanyViewModel>();
-      print('🔥 CompanyViewModel found: ${companyViewModel != null}');
       
       companyViewModel.loadCompaniesByCategory(
         widget.categoryTitle,
@@ -147,6 +156,8 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
       }
 
       print('🔥 SubcategoryDetailView build - rendering main content');
+      final isDetailView = widget.forceDetailView && widget.initialSubSubcategory != null;
+
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: _buildAppBar(),
@@ -156,7 +167,10 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
             children: [
               _buildBreadcrumb(),
               _buildSearchBar(),
-              _buildSubSubcategoriesGrid(category),
+              if (isDetailView)
+                _buildSubSubSubcategoriesGrid()
+              else
+                _buildSubSubcategoriesGrid(category),
               _buildPremiumSection(),
               _buildGeneralPostsSection(),
             ],
@@ -257,10 +271,17 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
   }
 
   Widget _buildBreadcrumb() {
+    final segments = [
+      widget.categoryTitle,
+      widget.subcategoryTitle,
+      if (widget.initialSubSubcategory != null)
+        _cleanLabel(widget.initialSubSubcategory!),
+    ];
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Text(
-        '${widget.categoryTitle} > ${widget.subcategoryTitle} >',
+        '${segments.join(' > ')}${widget.forceDetailView ? '' : ' >'}',
         style: TextStyle(
           fontSize: 18.sp,
           fontWeight: FontWeight.bold,
@@ -314,7 +335,7 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
       print('🔥 No subSubcategories found, returning empty widget');
       return const SizedBox.shrink();
     }
-    
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
       child: Column(
@@ -360,22 +381,76 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(10.r),
-          onTap: () {
-            setState(() {
-              _selectedSubSubcategory = _selectedSubSubcategory == subSubcategory ? null : subSubcategory;
-            });
-            final companyViewModel = context.read<CompanyViewModel>();
-            companyViewModel.loadCompaniesByCategory(
+          onTap: () async {
+            final hasMore = CategoryData.hasSubSubSubcategories(
               widget.categoryTitle,
-              subcategory: widget.subcategoryTitle,
-              subSubcategory: _selectedSubSubcategory,
+              widget.subcategoryTitle,
+              subSubcategory,
             );
+
+            if (hasMore) {
+              if (widget.forceDetailView && _selectedSubSubcategory == subSubcategory) {
+                // 이미 동일한 4차 카테고리 페이지인 경우 상태만 초기화
+                setState(() {
+                  _selectedSubSubcategory = subSubcategory;
+                  _selectedSubSubSubcategory = null;
+                });
+              } else {
+                try {
+                  await context.pushNamed(
+                    'sub_subcategory_detail',
+                    pathParameters: {
+                      'categoryTitle': widget.categoryTitle,
+                      'subcategoryTitle': widget.subcategoryTitle,
+                      'subSubcategoryTitle': subSubcategory,
+                    },
+                  );
+                } on GoException catch (e, stackTrace) {
+                  debugPrint(
+                    '🚨 GoException while navigating to sub_subcategory_detail: ${e.message}\n'
+                    '  categoryTitle: ${widget.categoryTitle}\n'
+                    '  subcategoryTitle: ${widget.subcategoryTitle}\n'
+                    '  subSubcategoryTitle: $subSubcategory',
+                  );
+                  debugPrintStack(stackTrace: stackTrace);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('페이지 이동에 실패했습니다: ${e.message}')),
+                    );
+                  }
+                } catch (e, stackTrace) {
+                  debugPrint(
+                    '🚨 Unexpected navigation error to sub_subcategory_detail: $e\n'
+                    '  categoryTitle: ${widget.categoryTitle}\n'
+                    '  subcategoryTitle: ${widget.subcategoryTitle}\n'
+                    '  subSubcategoryTitle: $subSubcategory',
+                  );
+                  debugPrintStack(stackTrace: stackTrace);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('예상치 못한 오류가 발생했습니다: ${e.toString()}')),
+                    );
+                  }
+                }
+              }
+            } else {
+              setState(() {
+                _selectedSubSubcategory = _selectedSubSubcategory == subSubcategory ? null : subSubcategory;
+                _selectedSubSubSubcategory = null;
+              });
+              final companyViewModel = context.read<CompanyViewModel>();
+              companyViewModel.loadCompaniesByCategory(
+                widget.categoryTitle,
+                subcategory: widget.subcategoryTitle,
+                subSubcategory: _selectedSubSubcategory,
+              );
+            }
           },
           child: Center(
             child: Padding(
               padding: EdgeInsets.all(4.w),
               child: Text(
-                subSubcategory,
+                _cleanLabel(subSubcategory),
                 style: TextStyle(
                   fontSize: 13.sp,
                   fontWeight: FontWeight.bold,
@@ -391,6 +466,108 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
         ),
       ),
     );
+  }
+
+  Widget _buildSubSubSubcategoriesGrid() {
+    final parentSubSubcategory = widget.initialSubSubcategory ?? _selectedSubSubcategory;
+    if (parentSubSubcategory == null) {
+      return const SizedBox.shrink();
+    }
+
+    final details = CategoryData.getSubSubSubcategories(
+      widget.categoryTitle,
+      widget.subcategoryTitle,
+      parentSubSubcategory,
+    );
+
+    if (details == null || details.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '세부 카테고리',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              childAspectRatio: 1.0,
+              crossAxisSpacing: 8.w,
+              mainAxisSpacing: 8.h,
+            ),
+            itemCount: details.length,
+            itemBuilder: (context, index) {
+              return _buildSubSubSubcategoryCard(parentSubSubcategory, details[index]);
+            },
+          ),
+          SizedBox(height: 20.h),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubSubSubcategoryCard(String parentSubSubcategory, String detail) {
+    final isSelected = _selectedSubSubSubcategory == detail;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFF1E3A5F) : const Color(0xFFE8F4FD),
+        borderRadius: BorderRadius.circular(10.r),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10.r),
+          onTap: () {
+            setState(() {
+              _selectedSubSubcategory = parentSubSubcategory;
+              _selectedSubSubSubcategory =
+                  _selectedSubSubSubcategory == detail ? null : detail;
+            });
+
+            final companyViewModel = context.read<CompanyViewModel>();
+            companyViewModel.loadCompaniesByCategory(
+              widget.categoryTitle,
+              subcategory: widget.subcategoryTitle,
+              subSubcategory: _selectedSubSubcategory,
+            );
+          },
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(4.w),
+              child: Text(
+                _cleanLabel(detail),
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : Colors.black87,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _cleanLabel(String value) {
+    return value.replaceAll('*', '').trim();
   }
 
   Widget _buildPremiumSection() {
@@ -463,100 +640,141 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
   }
 
   Widget _buildPremiumCard(CompanyEntity company) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: const Color(0xFFFF9800), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              Container(
-                height: 120.h,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
-                  color: Colors.grey[200],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
-                  child: company.logo != null && company.logo!.isNotEmpty
-                      ? Image.network(
-                          company.logo!,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildFallbackImage();
-                          },
-                        )
-                      : _buildFallbackImage(),
-                ),
+    return Consumer<FavoriteViewModel>(
+      builder: (context, favoriteViewModel, _) {
+        final isFavorite = favoriteViewModel.isFavorite(company.id);
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12.r),
+            border: Border.all(color: const Color(0xFFFF9800), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.1),
+                spreadRadius: 1,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
               ),
-              Positioned(
-                top: 8.h,
-                right: 8.w,
-                child: GestureDetector(
-                  onTap: () {
-                    final companyViewModel = context.read<CompanyViewModel>();
-                    companyViewModel.toggleFavorite(company.id);
-                  },
-                  child: Container(
-                    width: 32.w,
-                    height: 32.h,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  Container(
+                    height: 120.h,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
+                      color: Colors.grey[200],
                     ),
-                    child: Icon(
-                      Icons.favorite_border,
-                      color: Colors.red,
-                      size: 18.sp,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
+                      child: company.logo != null && company.logo!.isNotEmpty
+                          ? Image.network(
+                              company.logo!,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return _buildFallbackImage();
+                              },
+                            )
+                          : _buildFallbackImage(),
                     ),
                   ),
+                  Positioned(
+                    top: 8.h,
+                    right: 8.w,
+                    child: GestureDetector(
+                      onTap: () async {
+                        try {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('좋아요 기능은 로그인 후 이용 가능합니다.'),
+                              duration: Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          return;
+                        }
+                        final result = await favoriteViewModel.toggleFavorite(company.id);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result
+                                    ? '${company.companyName}을(를) 좋아요에 추가했습니다.'
+                                    : '${company.companyName}을(를) 좋아요에서 제거했습니다.',
+                              ),
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        } catch (e, stackTrace) {
+                          debugPrint('좋아요 토글 실패 (프리미엄 카드): $e');
+                          debugPrintStack(stackTrace: stackTrace);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(e.toString()),
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      child: Container(
+                        width: 32.w,
+                        height: 32.h,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: isFavorite ? Colors.red : Colors.grey,
+                          size: 18.sp,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: EdgeInsets.all(12.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      company.companyName,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 4.h),
+                Text(
+                  _cleanLabel(company.greeting ?? company.subcategory),
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: Colors.grey[500],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          Padding(
-            padding: EdgeInsets.all(12.w),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  company.companyName,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  company.greeting ?? company.subcategory,
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    color: Colors.grey[500],
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -712,100 +930,141 @@ class _SubcategoryDetailViewState extends State<SubcategoryDetailView> {
   }
 
   Widget _buildGeneralPostCard(CompanyEntity company) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 2,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 80.h,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
-              color: Colors.grey[200],
-            ),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
-                  child: company.logo != null && company.logo!.isNotEmpty
-                      ? Image.network(
-                          company.logo!,
-                          width: double.infinity,
-                          height: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildSmallFallbackImage();
-                          },
-                        )
-                      : _buildSmallFallbackImage(),
-                ),
-                Positioned(
-                  top: 6.h,
-                  left: 6.w,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4.r),
-                    ),
-                    child: Text(
-                      company.companyName,
-                      style: TextStyle(
-                        fontSize: 8.sp,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 6.h,
-                  right: 6.w,
-                  child: GestureDetector(
-                    onTap: () {
-                      final companyViewModel = context.read<CompanyViewModel>();
-                      companyViewModel.toggleFavorite(company.id);
-                    },
-                    child: Icon(
-                      Icons.favorite_border,
-                      color: Colors.red,
-                      size: 16.sp,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 6.h),
-            child: Text(
-              company.subcategory,
-              style: TextStyle(
-                fontSize: 10.sp,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500,
+    return Consumer<FavoriteViewModel>(
+      builder: (context, favoriteViewModel, _) {
+        final isFavorite = favoriteViewModel.isFavorite(company.id);
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8.r),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.1),
+                spreadRadius: 1,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
               ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ),
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 80.h,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
+                  color: Colors.grey[200],
+                ),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
+                      child: company.logo != null && company.logo!.isNotEmpty
+                          ? Image.network(
+                              company.logo!,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return _buildSmallFallbackImage();
+                              },
+                            )
+                          : _buildSmallFallbackImage(),
+                    ),
+                    Positioned(
+                      top: 6.h,
+                      left: 6.w,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        child: Text(
+                          company.companyName,
+                          style: TextStyle(
+                            fontSize: 8.sp,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 6.h,
+                      right: 6.w,
+                      child: GestureDetector(
+                        onTap: () async {
+                          try {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user == null) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('좋아요 기능은 로그인 후 이용 가능합니다.'),
+                                  duration: Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                              return;
+                            }
+                            final result = await favoriteViewModel.toggleFavorite(company.id);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  result
+                                      ? '${company.companyName}을(를) 좋아요에 추가했습니다.'
+                                      : '${company.companyName}을(를) 좋아요에서 제거했습니다.',
+                                ),
+                                duration: const Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          } catch (e, stackTrace) {
+                            debugPrint('좋아요 토글 실패 (일반 카드): $e');
+                            debugPrintStack(stackTrace: stackTrace);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(e.toString()),
+                                duration: Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                        child: Icon(
+                          isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: isFavorite ? Colors.red : Colors.grey,
+                          size: 16.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 6.h),
+                child: Text(
+                  _cleanLabel(company.subcategory),
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

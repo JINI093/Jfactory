@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../viewmodels/company_viewmodel.dart';
+import '../../viewmodels/favorite_viewmodel.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../../domain/entities/post_entity.dart';
 import '../../../data/models/post_model.dart';
@@ -29,6 +31,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CompanyViewModel>().loadCompany(widget.companyId);
+      context.read<FavoriteViewModel>().loadFavoriteCompanies();
       _loadPosts();
     });
   }
@@ -93,13 +96,57 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
           onPressed: () => context.pop(),
         ),
         actions: [
-          Consumer<CompanyViewModel>(
-            builder: (context, viewModel, child) {
-              if (viewModel.selectedCompany == null) return const SizedBox();
-              
+          Consumer2<CompanyViewModel, FavoriteViewModel>(
+            builder: (context, companyViewModel, favoriteViewModel, child) {
+              final company = companyViewModel.selectedCompany;
+              if (company == null) return const SizedBox();
+
+              final isFavorite = favoriteViewModel.isFavorite(company.id);
               return IconButton(
-                icon: const Icon(Icons.favorite_border),
-                onPressed: () => viewModel.toggleFavorite(viewModel.selectedCompany!.id),
+                icon: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: isFavorite ? Colors.red : Colors.black54,
+                ),
+                onPressed: () async {
+                  try {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user == null) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('좋아요 기능은 로그인 후 이용 가능합니다.'),
+                          duration: Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                      return;
+                    }
+                    final result = await favoriteViewModel.toggleFavorite(company.id);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          result
+                              ? '${company.companyName}을(를) 좋아요에 추가했습니다.'
+                              : '${company.companyName}을(를) 좋아요에서 제거했습니다.',
+                        ),
+                        duration: const Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } catch (e, stackTrace) {
+                    debugPrint('좋아요 토글 실패 (회사 상세): $e');
+                    debugPrintStack(stackTrace: stackTrace);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(e.toString()),
+                        duration: Duration(seconds: 2),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
               );
             },
           ),

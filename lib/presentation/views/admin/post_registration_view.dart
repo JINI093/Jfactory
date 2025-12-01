@@ -9,7 +9,12 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../../../data/models/category_model.dart';
 
 class PostRegistrationView extends StatefulWidget {
-  const PostRegistrationView({super.key});
+  final String? companyId;
+  
+  const PostRegistrationView({
+    super.key,
+    this.companyId,
+  });
 
   @override
   State<PostRegistrationView> createState() => _PostRegistrationViewState();
@@ -159,18 +164,18 @@ class _PostRegistrationViewState extends State<PostRegistrationView> {
                                 borderRadius: BorderRadius.circular(8.r),
                               ),
                             ),
-                            items: CategoryData.categories.map((category) {
-                              return DropdownMenuItem(
-                                value: category.title,
-                                child: Text(category.title),
-                              );
-                            }).toList(),
+                            items: _buildCategoryItemsWithDividers(CategoryData.categories.map((category) => category.title).toList()),
                             onChanged: (value) {
-                              setState(() {
-                                _selectedCategory = value;
-                                _selectedSubcategory = null;
-                                _selectedSubSubcategory = null;
-                              });
+                              if (value != null && 
+                                  value != '__category_divider__' && 
+                                  value != '__section_divider__' && 
+                                  value != '__item_divider__') {
+                                setState(() {
+                                  _selectedCategory = value;
+                                  _selectedSubcategory = null;
+                                  _selectedSubSubcategory = null;
+                                });
+                              }
                             },
                           ),
                         ),
@@ -581,6 +586,48 @@ class _PostRegistrationViewState extends State<PostRegistrationView> {
     }).toList();
   }
 
+  // 카테고리 드롭다운용: 각 카테고리 사이에 구분선 추가
+  List<DropdownMenuItem<String>> _buildCategoryItemsWithDividers(List<String> items) {
+    final List<DropdownMenuItem<String>> result = [];
+    for (int i = 0; i < items.length; i++) {
+      result.add(
+        DropdownMenuItem<String>(
+          value: items[i],
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 4.h),
+            child: Text(items[i]),
+          ),
+        ),
+      );
+      // 마지막 항목이 아니면 구분선 추가
+      if (i < items.length - 1) {
+        result.add(
+          DropdownMenuItem<String>(
+            enabled: false,
+            value: '__category_divider__',
+            child: Container(
+              height: 2,
+              margin: EdgeInsets.symmetric(vertical: 0),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.grey[400]!,
+                    width: 1,
+                  ),
+                  bottom: BorderSide(
+                    color: Colors.grey[400]!,
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
   Future<void> _savePost() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -601,7 +648,7 @@ class _PostRegistrationViewState extends State<PostRegistrationView> {
       // 게시글 엔티티 생성
       final post = PostEntity(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
-        companyId: 'admin', // 관리자 게시글
+        companyId: widget.companyId ?? 'admin', // 전달받은 companyId 사용
         title: _titleController.text.trim(),
         content: _contentController.text.trim(),
         images: imageUrls,
