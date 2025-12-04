@@ -4,33 +4,23 @@
 
 ### 1. GitHub 저장소 설정
 
-1. GitHub 저장소로 이동: https://github.com/osjaeyoung/vendor_ads
+1. GitHub 저장소로 이동: https://github.com/JINI093/Jfactory
 2. **Settings** → **Pages** 메뉴로 이동
 3. **Source**에서 **GitHub Actions** 선택
 4. 저장
 
 ### 2. 코드 푸시 및 자동 배포
 
-현재 브랜치가 `develop`이므로, 다음 명령어로 푸시하면 자동으로 배포됩니다:
+`main`, `master`, 또는 `develop` 브랜치에 푸시하면 자동으로 배포됩니다:
 
 ```bash
-git add .
-git commit -m "Add GitHub Pages deployment workflow"
-git push origin develop
-```
-
-또는 `main` 브랜치로 푸시:
-
-```bash
-git checkout main
-git merge develop
 git push origin main
 ```
 
 ### 3. 배포 확인
 
 배포가 완료되면 (약 2-3분 소요) 다음 URL에서 확인할 수 있습니다:
-- `https://osjaeyoung.github.io/vendor_ads/admin/`
+- `https://jini093.github.io/Jfactory/admin/`
 
 ### 4. 배포 상태 확인
 
@@ -44,7 +34,7 @@ git push origin main
 저장소 이름이 `vendor_ads`가 아닌 경우, `.github/workflows/deploy-admin.yml` 파일의 다음 줄을 수정하세요:
 
 ```yaml
-run: flutter build web --target lib/admin_main.dart --base-href "/저장소이름/"
+run: flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
 ```
 
 그리고 `destination_dir`도 필요시 수정:
@@ -63,7 +53,7 @@ Firebase 설정이 올바른지 확인하세요. `lib/admin_main.dart`의 Fireba
 
 ```bash
 # Flutter 웹 빌드
-flutter build web --target lib/admin_main.dart --base-href "/vendor_ads/"
+flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
 
 # gh-pages 브랜치 생성 및 배포
 git checkout --orphan gh-pages
