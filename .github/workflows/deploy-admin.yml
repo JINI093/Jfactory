@@ -25,21 +25,19 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build web
-        run: flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
-
-      - name: Copy build files for root deployment
-        run: |
-          mkdir -p build/web-root
-          cp -r build/web/* build/web-root/
+      - name: Build web for root
+        run: flutter build web --target lib/admin_main.dart --base-href "/"
 
       - name: Deploy to root directory
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web-root
+          publish_dir: ./build/web
           destination_dir: ./
           cname: false
+
+      - name: Build web for /admin
+        run: flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
 
       - name: Deploy to /admin directory
         uses: peaceiris/actions-gh-pages@v3
