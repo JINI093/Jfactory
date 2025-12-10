@@ -75,10 +75,10 @@ class AdminApp extends StatelessWidget {
                   ),
                 ),
               ),
-              cardTheme: CardThemeData(
+              cardTheme: const CardTheme(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.all(Radius.circular(8)),
                 ),
               ),
               inputDecorationTheme: InputDecorationTheme(
