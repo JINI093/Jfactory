@@ -32,7 +32,7 @@ dependencies:
   # Social Login
   google_sign_in: ^6.1.6
   kakao_flutter_sdk_user: ^1.9.5
-  flutter_naver_login: ^2.1.1
+  flutter_naver_login: ^2.0.0
   sign_in_with_apple: ^6.1.2
   
   # Navigation
