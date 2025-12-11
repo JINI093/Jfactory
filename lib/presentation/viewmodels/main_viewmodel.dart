@@ -146,8 +146,11 @@ class MainViewModel extends ChangeNotifier {
   }
 
   void searchCompanies(String query) {
-    _searchQuery = query.trim();
+    final trimmedQuery = query.trim();
+    debugPrint('🔍 searchCompanies called with query: "$trimmedQuery"');
+    _searchQuery = trimmedQuery;
     _applyAllFilters();
+    debugPrint('🔍 After filtering: ${_filteredCompanies.length} companies found');
     notifyListeners();
   }
 
@@ -212,20 +215,35 @@ class MainViewModel extends ChangeNotifier {
         if (!matchesLocation) return false;
       }
       
-      // 검색어 필터링
+      // 검색어 필터링 (검색어가 있으면 다른 필터보다 우선)
       if (_searchQuery.isNotEmpty) {
-        final searchLower = _searchQuery.toLowerCase();
-        final matchesSearch = company.companyName.toLowerCase().contains(searchLower) ||
-                            company.category.toLowerCase().contains(searchLower) ||
-                            company.subcategory.toLowerCase().contains(searchLower) ||
-                            (company.greeting?.toLowerCase().contains(searchLower) ?? false) ||
-                            (company.address.toLowerCase().contains(searchLower));
-        if (!matchesSearch) return false;
+        final searchLower = _searchQuery.toLowerCase().trim();
+        if (searchLower.isEmpty) return true; // 빈 검색어는 모든 결과 표시
+        
+        final matchesSearch = 
+            company.companyName.toLowerCase().contains(searchLower) ||
+            company.category.toLowerCase().contains(searchLower) ||
+            company.subcategory.toLowerCase().contains(searchLower) ||
+            (company.subSubcategory?.toLowerCase().contains(searchLower) ?? false) ||
+            (company.greeting?.toLowerCase().contains(searchLower) ?? false) ||
+            company.address.toLowerCase().contains(searchLower) ||
+            company.ceoName.toLowerCase().contains(searchLower) ||
+            company.phone.toLowerCase().contains(searchLower);
+        
+        if (!matchesSearch) {
+          debugPrint('🔍 검색어 불일치: "$searchLower" - 기업: ${company.companyName}');
+          return false;
+        }
+        debugPrint('✅ 검색어 일치: "$searchLower" - 기업: ${company.companyName}');
       }
       
       return true;
     }).toList();
     
     debugPrint('🔥 MainViewModel: Filtered companies: ${_filteredCompanies.length} / ${_companies.length}');
+    if (_searchQuery.isNotEmpty) {
+      debugPrint('🔍 Search query: "$_searchQuery"');
+      debugPrint('🔍 Filtered companies: ${_filteredCompanies.map((c) => c.companyName).join(", ")}');
+    }
   }
 }

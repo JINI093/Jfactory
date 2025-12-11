@@ -576,13 +576,17 @@ class _MainViewState extends State<MainView> {
                     child: Column(
                       children: [
                         Icon(
-                          Icons.business_outlined,
+                          viewModel.searchQuery.isNotEmpty 
+                              ? Icons.search_off
+                              : Icons.business_outlined,
                           size: 48.sp,
                           color: Colors.grey[400],
                         ),
                         SizedBox(height: 12.h),
                         Text(
-                          '프리미엄 기업이 없습니다.',
+                          viewModel.searchQuery.isNotEmpty
+                              ? '검색 결과가 없습니다.'
+                              : '프리미엄 기업이 없습니다.',
                           style: TextStyle(
                             fontSize: 14.sp,
                             color: Colors.grey[600],
@@ -591,7 +595,9 @@ class _MainViewState extends State<MainView> {
                         ),
                         SizedBox(height: 6.h),
                         Text(
-                          '기업광고를 구매하면 메인에 노출됩니다.',
+                          viewModel.searchQuery.isNotEmpty
+                              ? '다른 키워드로 검색해보세요.'
+                              : '기업광고를 구매하면 메인에 노출됩니다.',
                           style: TextStyle(
                             fontSize: 12.sp,
                             color: Colors.grey[500],

@@ -126,42 +126,26 @@ class CompanyViewModel extends ChangeNotifier {
   // Apply filters to companies
   void _applyFilters() {
     _filteredCompanies = _companies.where((company) {
-      // 카테고리 필터링
+      // 카테고리 필터링 (정확한 매칭)
       if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
         final companyCategory = company.category.trim();
         final selectedCategory = _selectedCategory!.trim();
         
-        // 정규화 함수: 줄바꿈을 공백으로, 연속 공백 정리, 소문자 변환
-        String normalize(String text) {
-          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-        }
-        
-        final normalizedCompany = normalize(companyCategory);
-        final normalizedSelected = normalize(selectedCategory);
-        
-        // 정확한 매칭 (대소문자 무시, 공백 정규화)
-        if (normalizedCompany != normalizedSelected) {
-          debugPrint('카테고리 불일치: company="$companyCategory" selected="$selectedCategory"');
+        // 정확한 문자열 매칭 (대소문자 구분 없이)
+        if (companyCategory.toLowerCase() != selectedCategory.toLowerCase()) {
+          debugPrint('❌ 카테고리 불일치: company="$companyCategory" selected="$selectedCategory"');
           return false;
         }
       }
       
-      // 세부카테고리 필터링
+      // 세부카테고리 필터링 (정확한 매칭)
       if (_selectedSubcategory != null && _selectedSubcategory!.isNotEmpty) {
         final companySubcategory = company.subcategory.trim();
         final selectedSubcategory = _selectedSubcategory!.trim();
         
-        // 정규화 함수
-        String normalize(String text) {
-          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-        }
-        
-        final normalizedCompany = normalize(companySubcategory);
-        final normalizedSelected = normalize(selectedSubcategory);
-        
-        // 정확한 매칭
-        if (normalizedCompany != normalizedSelected) {
-          debugPrint('세부카테고리 불일치: company="$companySubcategory" selected="$selectedSubcategory"');
+        // 정확한 문자열 매칭 (대소문자 구분 없이)
+        if (companySubcategory.toLowerCase() != selectedSubcategory.toLowerCase()) {
+          debugPrint('❌ 세부카테고리 불일치: company="$companySubcategory" selected="$selectedSubcategory"');
           return false;
         }
       }
