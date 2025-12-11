@@ -3,12 +3,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'presentation/views/admin/admin_main.dart';
-import 'presentation/views/admin/user_management_view.dart';
-import 'presentation/views/admin/post_management_view.dart';
-import 'presentation/views/admin/post_registration_view.dart';
-import 'presentation/views/admin/form_management_view.dart';
-import 'presentation/views/admin/ad_management_view.dart';
-import 'presentation/views/admin/inquiry_management_view.dart';
 import 'presentation/providers/app_providers.dart';
 
 void main() async {
@@ -75,10 +69,10 @@ class AdminApp extends StatelessWidget {
                   ),
                 ),
               ),
-              cardTheme: const CardTheme(
+              cardTheme: CardThemeData(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
               inputDecorationTheme: InputDecorationTheme(
@@ -92,14 +86,6 @@ class AdminApp extends StatelessWidget {
               ),
             ),
             home: const AdminMainView(),
-            routes: {
-              '/user-management': (context) => const UserManagementView(),
-              '/post-management': (context) => const PostManagementView(),
-              '/post-registration': (context) => const PostRegistrationView(),
-              '/form-management': (context) => const FormManagementView(),
-              '/ad-management': (context) => const AdManagementView(),
-              '/inquiry-management': (context) => const InquiryManagementView(),
-            },
           );
         },
       ),
