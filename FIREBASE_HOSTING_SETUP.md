@@ -1,25 +1,25 @@
 # Firebase Hosting 배포 설정 가이드
 
-## 1단계: Firebase Service Account 생성
+## 1단계: Firebase CLI 토큰 생성
 
-1. **Firebase Console 접속**
-   - https://console.firebase.google.com/
-   - `fir-test-96091` 프로젝트 선택
+1. **로컬에서 Firebase CLI 설치 및 로그인**
+   ```bash
+   npm install -g firebase-tools
+   firebase login
+   ```
 
-2. **프로젝트 설정**
-   - 좌측 상단 톱니바퀴 아이콘 클릭 → "프로젝트 설정"
+2. **Firebase 토큰 생성**
+   ```bash
+   firebase login:ci
+   ```
+   이 명령어를 실행하면 토큰이 생성됩니다. 이 토큰을 복사하세요.
 
-3. **서비스 계정 탭**
-   - "서비스 계정" 탭 클릭
-   - "새 비공개 키 생성" 버튼 클릭
-   - JSON 파일 다운로드
-
-4. **GitHub Secrets에 추가**
+3. **GitHub Secrets에 추가**
    - GitHub 저장소: https://github.com/JINI093/Jfactory
    - Settings → Secrets and variables → Actions
    - "New repository secret" 클릭
-   - Name: `FIREBASE_SERVICE_ACCOUNT`
-   - Value: 다운로드한 JSON 파일의 전체 내용을 복사하여 붙여넣기
+   - Name: `FIREBASE_TOKEN`
+   - Value: 위에서 복사한 토큰을 붙여넣기
    - "Add secret" 클릭
 
 ## 2단계: Firebase Hosting 초기화 (로컬에서)
