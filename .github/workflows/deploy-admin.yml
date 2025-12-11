@@ -38,6 +38,11 @@ jobs:
           # Build for /admin path (same base-href)
           mkdir -p deploy/admin
           cp -r build/web/* deploy/admin/
+          # Add .nojekyll to prevent Jekyll processing
+          touch deploy/.nojekyll
+          touch deploy/admin/.nojekyll
+          # Add timestamp for cache busting
+          echo "Deployed at: $(date)" > deploy/deploy.txt
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -45,6 +50,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./deploy
           destination_dir: ./
-          force_orphan: false
+          force_orphan: true
           cname: false
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
 
