@@ -29,14 +29,13 @@ jobs:
         run: flutter pub get
 
       - name: Build web for root
-        run: flutter build web --target lib/admin_main.dart --base-href "/"
+        run: flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
 
       - name: Prepare deployment files
         run: |
           mkdir -p deploy
           cp -r build/web/* deploy/
-          # Build for /admin path
-          flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
+          # Build for /admin path (same base-href)
           mkdir -p deploy/admin
           cp -r build/web/* deploy/admin/
 
