@@ -9,7 +9,7 @@ import '../../presentation/views/main/main_view.dart';
 import '../../presentation/views/company/company_detail_view.dart';
 import '../../presentation/views/category/category_detail_view.dart';
 import '../../presentation/views/category/subcategory_detail_view.dart';
-import '../../presentation/views/post/premium_post_detail_view.dart';
+import '../../presentation/views/post/post_detail_view.dart';
 import '../../presentation/views/company/company_page_view.dart';
 import '../../presentation/views/favorites/favorites_view.dart';
 import '../../presentation/views/profile/profile_view.dart';
@@ -102,7 +102,7 @@ class AppRouter {
         name: 'premium_post_detail',
         builder: (context, state) {
           final postId = state.pathParameters['postId']!;
-          return PremiumPostDetailView(postId: postId);
+          return PostDetailView(postId: postId);
         },
       ),
       GoRoute(
@@ -297,7 +297,7 @@ class AppRouter {
         name: 'premium_post_detail',
         builder: (context, state) {
           final postId = state.pathParameters['postId']!;
-          return PremiumPostDetailView(postId: postId);
+          return PostDetailView(postId: postId);
         },
       ),
       GoRoute(

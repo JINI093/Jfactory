@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../data/models/category_model.dart';
+import '../post/post_detail_view.dart';
 
 class PostManagementView extends StatefulWidget {
   const PostManagementView({super.key});
@@ -261,33 +262,84 @@ class _PostManagementViewState extends State<PostManagementView> {
   }
 
   Widget _buildPostTable() {
-    Query query = _firestore.collection('posts');
+    // 쿼리 생성 시도 (인덱스 오류 처리)
+    Stream<QuerySnapshot>? queryStream;
+    bool useOrderBy = true;
+    
+    try {
+      Query query = _firestore.collection('posts');
 
-    // 카테고리 필터
-    if (_selectedCategory != null) {
-      query = query.where('category', isEqualTo: _selectedCategory);
-    }
-    if (_selectedSubcategory != null) {
-      query = query.where('subcategory', isEqualTo: _selectedSubcategory);
-    }
+      // 카테고리 필터
+      if (_selectedCategory != null) {
+        query = query.where('category', isEqualTo: _selectedCategory);
+      }
+      if (_selectedSubcategory != null) {
+        query = query.where('subcategory', isEqualTo: _selectedSubcategory);
+      }
 
-    // 정렬
-    if (_selectedSort == '최신순') {
-      query = query.orderBy('createdAt', descending: true);
-    } else if (_selectedSort == '오래된순') {
-      query = query.orderBy('createdAt', descending: false);
-    } else if (_selectedSort == '조회수순') {
-      query = query.orderBy('viewCount', descending: true);
+      // 정렬
+      if (_selectedSort == '최신순') {
+        query = query.orderBy('createdAt', descending: true);
+      } else if (_selectedSort == '오래된순') {
+        query = query.orderBy('createdAt', descending: false);
+      } else if (_selectedSort == '조회수순') {
+        query = query.orderBy('viewCount', descending: true);
+      }
+
+      queryStream = query.snapshots();
+    } catch (e) {
+      // 인덱스 오류 시 orderBy 없이 조회
+      debugPrint('⚠️ OrderBy 인덱스 오류, orderBy 없이 조회: $e');
+      useOrderBy = false;
+      
+      Query query = _firestore.collection('posts');
+      if (_selectedCategory != null) {
+        query = query.where('category', isEqualTo: _selectedCategory);
+      }
+      if (_selectedSubcategory != null) {
+        query = query.where('subcategory', isEqualTo: _selectedSubcategory);
+      }
+      queryStream = query.snapshots();
     }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
+      stream: queryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // 인덱스 오류인 경우 orderBy 없이 재시도
+          if (snapshot.error.toString().contains('index') || 
+              snapshot.error.toString().contains('failed-precondition')) {
+            debugPrint('⚠️ 인덱스 오류 감지, orderBy 없이 재시도');
+            Query retryQuery = _firestore.collection('posts');
+            if (_selectedCategory != null) {
+              retryQuery = retryQuery.where('category', isEqualTo: _selectedCategory);
+            }
+            if (_selectedSubcategory != null) {
+              retryQuery = retryQuery.where('subcategory', isEqualTo: _selectedSubcategory);
+            }
+            return StreamBuilder<QuerySnapshot>(
+              stream: retryQuery.snapshots(),
+              builder: (context, retrySnapshot) {
+                if (retrySnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (retrySnapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      '오류가 발생했습니다: ${retrySnapshot.error}',
+                      style: TextStyle(fontSize: _responsiveFontSize(12), color: Colors.red),
+                    ),
+                  );
+                }
+                return _buildPostList(retrySnapshot.data?.docs ?? [], false);
+              },
+            );
+          }
+          
           return Center(
             child: Text(
               '오류가 발생했습니다: ${snapshot.error}',
@@ -296,19 +348,48 @@ class _PostManagementViewState extends State<PostManagementView> {
           );
         }
 
-        final posts = snapshot.data?.docs ?? [];
+        return _buildPostList(snapshot.data?.docs ?? [], useOrderBy);
+      },
+    );
+  }
+
+  Widget _buildPostList(List<QueryDocumentSnapshot> posts, bool useOrderBy) {
+    // 클라이언트에서 정렬 (orderBy를 사용하지 않은 경우)
+    List<QueryDocumentSnapshot> sortedPosts = posts;
+    if (!useOrderBy) {
+      sortedPosts = List.from(posts);
+      sortedPosts.sort((a, b) {
+        final aData = a.data() as Map<String, dynamic>;
+        final bData = b.data() as Map<String, dynamic>;
         
-        // 검색 필터 적용
-        final filteredPosts = posts.where((doc) {
-          if (_searchQuery.isEmpty) return true;
-          
-          final data = doc.data() as Map<String, dynamic>;
-          final title = data['title']?.toString().toLowerCase() ?? '';
-          final equipmentName = data['equipmentName']?.toString().toLowerCase() ?? '';
-          final query = _searchQuery.toLowerCase();
-          
-          return title.contains(query) || equipmentName.contains(query);
-        }).toList();
+        if (_selectedSort == '최신순') {
+          final aDate = _parseDate(aData['createdAt']);
+          final bDate = _parseDate(bData['createdAt']);
+          if (aDate == null || bDate == null) return 0;
+          return bDate.compareTo(aDate);
+        } else if (_selectedSort == '오래된순') {
+          final aDate = _parseDate(aData['createdAt']);
+          final bDate = _parseDate(bData['createdAt']);
+          if (aDate == null || bDate == null) return 0;
+          return aDate.compareTo(bDate);
+        } else if (_selectedSort == '조회수순') {
+          final aViews = aData['viewCount'] ?? 0;
+          final bViews = bData['viewCount'] ?? 0;
+          return (bViews as num).compareTo(aViews as num);
+        }
+        return 0;
+      });
+    }
+    
+    // 검색 필터 적용 (게시글명, 기업명 검색)
+    return FutureBuilder<List<QueryDocumentSnapshot>>(
+      future: _filterPostsBySearch(sortedPosts, _searchQuery),
+      builder: (context, filterSnapshot) {
+        if (filterSnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final filteredPosts = filterSnapshot.data ?? [];
 
         if (filteredPosts.isEmpty) {
           return Center(
@@ -453,6 +534,88 @@ class _PostManagementViewState extends State<PostManagementView> {
     );
   }
 
+  Future<List<QueryDocumentSnapshot>> _filterPostsBySearch(
+    List<QueryDocumentSnapshot> posts,
+    String searchQuery,
+  ) async {
+    if (searchQuery.isEmpty) return posts;
+    
+    final query = searchQuery.toLowerCase().trim();
+    if (query.isEmpty) return posts;
+    
+    // 게시글명으로 먼저 필터링
+    final titleMatchedPosts = <QueryDocumentSnapshot>[];
+    final companyIdToCheck = <String>{};
+    
+    for (final postDoc in posts) {
+      final postData = postDoc.data() as Map<String, dynamic>;
+      final title = postData['title']?.toString().toLowerCase() ?? '';
+      final equipmentName = postData['equipmentName']?.toString().toLowerCase() ?? '';
+      
+      if (title.contains(query) || equipmentName.contains(query)) {
+        titleMatchedPosts.add(postDoc);
+      } else {
+        // 게시글명으로 매칭되지 않은 경우, 기업명 확인을 위해 companyId 수집
+        final companyId = postData['companyId']?.toString() ?? '';
+        if (companyId.isNotEmpty) {
+          companyIdToCheck.add(companyId);
+        }
+      }
+    }
+    
+    // 게시글명으로 매칭된 게시글이 있으면 기업명 검색은 스킵
+    if (titleMatchedPosts.isNotEmpty && companyIdToCheck.isEmpty) {
+      return titleMatchedPosts;
+    }
+    
+    // 기업명으로 검색 (게시글명으로 매칭되지 않은 게시글들만)
+    final companyMatchedPosts = <QueryDocumentSnapshot>[];
+    
+    // companyId별로 기업명을 한 번만 조회하기 위해 캐시 사용
+    final companyNameCache = <String, String>{};
+    
+    for (final postDoc in posts) {
+      if (titleMatchedPosts.contains(postDoc)) continue; // 이미 매칭된 게시글은 스킵
+      
+      final postData = postDoc.data() as Map<String, dynamic>;
+      final companyId = postData['companyId']?.toString() ?? '';
+      
+      if (companyId.isEmpty) continue;
+      
+      // 캐시에서 기업명 확인
+      String? companyName = companyNameCache[companyId];
+      
+      if (companyName == null) {
+        // 캐시에 없으면 Firestore에서 조회
+        try {
+          final userDoc = await _firestore.collection('users').doc(companyId).get();
+          if (userDoc.exists) {
+            final userData = userDoc.data() as Map<String, dynamic>;
+            companyName = (userData['companyName'] ?? userData['name'] ?? '').toString().toLowerCase();
+            companyNameCache[companyId] = companyName;
+          } else {
+            companyNameCache[companyId] = '';
+            continue;
+          }
+        } catch (e) {
+          debugPrint('Error fetching company name for $companyId: $e');
+          companyNameCache[companyId] = '';
+          continue;
+        }
+      }
+      
+      if (companyName.isEmpty) continue;
+      
+      // 기업명에 검색어가 포함되어 있는지 확인
+      if (companyName.contains(query)) {
+        companyMatchedPosts.add(postDoc);
+      }
+    }
+    
+    // 게시글명 매칭 결과와 기업명 매칭 결과 합치기
+    return [...titleMatchedPosts, ...companyMatchedPosts];
+  }
+
   Widget _buildHeaderCell(String text) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
@@ -469,7 +632,7 @@ class _PostManagementViewState extends State<PostManagementView> {
 
   TableRow _buildPostRow(int index, String postId, Map<String, dynamic> postData) {
     final category = _formatCategory(postData);
-    final companyName = _getCompanyName(postData['companyId'] ?? '');
+    final companyId = postData['companyId'] ?? '';
     final postName = postData['equipmentName'] ?? postData['title'] ?? '정보 없음';
     final createdAt = _formatDate(postData['createdAt']);
     final adType = _getAdType(postData);
@@ -478,7 +641,7 @@ class _PostManagementViewState extends State<PostManagementView> {
     return TableRow(
       children: [
         _buildCell(category),
-        _buildCell(companyName),
+        _buildCompanyNameCell(companyId),
         _buildCell(postName),
         _buildCell(createdAt),
         _buildCell(adType),
@@ -494,7 +657,14 @@ class _PostManagementViewState extends State<PostManagementView> {
       child: isLink
           ? GestureDetector(
               onTap: () {
-                // TODO: 게시글 상세보기 페이지로 이동
+                if (postId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PostDetailView(postId: postId),
+                    ),
+                  );
+                }
               },
               child: Text(
                 text,
@@ -515,6 +685,62 @@ class _PostManagementViewState extends State<PostManagementView> {
     );
   }
 
+  Widget _buildCompanyNameCell(String companyId) {
+    if (companyId.isEmpty) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+        child: Text(
+          '-',
+          style: TextStyle(
+            fontSize: _responsiveFontSize(12),
+            color: Colors.black87,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+      child: FutureBuilder<DocumentSnapshot>(
+        future: _firestore.collection('users').doc(companyId).get(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Text(
+              '로딩 중...',
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                color: Colors.grey[600],
+              ),
+            );
+          }
+
+          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+            return Text(
+              companyId, // 기업명을 찾을 수 없으면 companyId 표시
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                color: Colors.grey[600],
+              ),
+            );
+          }
+
+          final userData = snapshot.data!.data() as Map<String, dynamic>;
+          final companyName = userData['companyName'] ?? 
+                             userData['name'] ?? 
+                             companyId;
+          
+          return Text(
+            companyName,
+            style: TextStyle(
+              fontSize: _responsiveFontSize(12),
+              color: Colors.black87,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   String _formatCategory(Map<String, dynamic> postData) {
     final category = postData['category'] ?? '';
     final subcategory = postData['subcategory'] ?? '';
@@ -530,11 +756,6 @@ class _PostManagementViewState extends State<PostManagementView> {
     return category;
   }
 
-  String _getCompanyName(String companyId) {
-    // TODO: Firestore에서 companyId로 기업명 조회
-    // 임시로 companyId 반환
-    return companyId.isNotEmpty ? companyId : '-';
-  }
 
   String _formatDate(dynamic dateValue) {
     if (dateValue == null) return '정보 없음';

@@ -1,19 +1,175 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/post_entity.dart';
+import '../../../data/models/post_model.dart';
 import 'post_edit_view.dart';
 
-class PostDetailView extends StatelessWidget {
-  final PostEntity post;
+class PostDetailView extends StatefulWidget {
+  final PostEntity? post;
+  final String? postId;
 
   const PostDetailView({
     super.key,
-    required this.post,
+    this.post,
+    this.postId,
   });
 
   @override
+  State<PostDetailView> createState() => _PostDetailViewState();
+}
+
+class _PostDetailViewState extends State<PostDetailView> {
+  PostEntity? _post;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.post != null) {
+      _post = widget.post;
+      _isLoading = false;
+    } else if (widget.postId != null) {
+      _loadPost(widget.postId!);
+    } else {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '게시글 정보가 없습니다.';
+      });
+    }
+  }
+
+  Future<void> _loadPost(String postId) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(postId)
+          .get();
+
+      if (!doc.exists) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '게시글을 찾을 수 없습니다.';
+        });
+        return;
+      }
+
+      final data = doc.data() as Map<String, dynamic>;
+      data['id'] = doc.id;
+      
+      // 조회수 증가 (FieldValue.increment 사용 - 동시성 안전)
+      try {
+        final currentViewCount = (data['viewCount'] as int?) ?? 0;
+        debugPrint('📊 게시글 조회수 증가: $postId (현재: $currentViewCount)');
+        
+        await FirebaseFirestore.instance
+            .collection('posts')
+            .doc(postId)
+            .update({'viewCount': FieldValue.increment(1)});
+        
+        // 조회수 증가 반영 (현재 값 + 1)
+        data['viewCount'] = currentViewCount + 1;
+        debugPrint('✅ 조회수 증가 완료: ${currentViewCount + 1}');
+      } catch (e) {
+        // 조회수 증가 실패해도 게시글은 표시
+        debugPrint('⚠️ 조회수 증가 실패: $e');
+        // viewCount가 없을 수 있으므로 기본값 설정
+        if (!data.containsKey('viewCount')) {
+          data['viewCount'] = 0;
+        }
+      }
+      
+      final postModel = PostModel.fromJson(data);
+      final post = postModel.toEntity();
+
+      setState(() {
+        _post = post;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '게시글을 불러오는 중 오류가 발생했습니다: $e';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            '게시글 상세',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFF1E3A5F),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null || _post == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            '게시글 상세',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFF1E3A5F),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64.sp,
+                color: Colors.grey[400],
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                _errorMessage ?? '게시글을 찾을 수 없습니다.',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final post = _post!;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -91,9 +247,9 @@ class PostDetailView extends StatelessWidget {
             
             SizedBox(height: 16.h),
             
-            // 제목
+            // 제목 (equipmentName이 있으면 우선 표시)
             Text(
-              post.title,
+              post.equipmentName ?? post.title,
               style: TextStyle(
                 fontSize: 24.sp,
                 fontWeight: FontWeight.bold,

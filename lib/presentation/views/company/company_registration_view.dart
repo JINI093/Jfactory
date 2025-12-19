@@ -415,6 +415,8 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
     _loadUserData();
   }
   
+  bool _isCompanyNameReadOnly = false; // 개인 계정으로 가입한 경우 입력 가능하도록
+
   Future<void> _loadUserData() async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
@@ -427,33 +429,39 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         if (userDoc.exists) {
           final userData = userDoc.data();
           if (userData?['userType'] == 'company') {
+            // 기업 계정으로 가입한 경우: 기업명 자동 입력, 읽기 전용
             setState(() {
               _companyNameFromSignup = userData?['companyName'];
               _companyNameController.text = _companyNameFromSignup ?? '';
               _businessLicenseUrlFromSignup = userData?['businessLicenseUrl'];
+              _isCompanyNameReadOnly = true; // 읽기 전용
               _isLoading = false;
             });
           } else {
-            // userType이 'company'가 아니어도 로딩 완료
+            // 개인 계정으로 가입한 경우: 기업명 입력 가능
             setState(() {
+              _isCompanyNameReadOnly = false; // 입력 가능
               _isLoading = false;
             });
           }
         } else {
-          // 문서가 없어도 로딩 완료
+          // 문서가 없어도 로딩 완료 (개인 계정으로 간주)
           setState(() {
+            _isCompanyNameReadOnly = false;
             _isLoading = false;
           });
         }
       } else {
-        // 사용자가 없어도 로딩 완료
+        // 사용자가 없어도 로딩 완료 (개인 계정으로 간주)
         setState(() {
+          _isCompanyNameReadOnly = false;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
       setState(() {
+        _isCompanyNameReadOnly = false;
         _isLoading = false;
       });
     }
@@ -530,14 +538,16 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
                     ),
                     SizedBox(height: 32.h),
                     
-                    // 기업명 (자동 입력, 읽기 전용)
+                    // 기업명 (기업 계정: 자동 입력/읽기 전용, 개인 계정: 입력 가능)
                     _buildTextField(
                       label: '기업명',
                       controller: _companyNameController,
-                      hintText: '기업명',
+                      hintText: '기업명을 입력해주세요',
                       isRequired: true,
-                      readOnly: true,
-                      suffixIcon: const Icon(Icons.lock_outline, size: 20),
+                      readOnly: _isCompanyNameReadOnly,
+                      suffixIcon: _isCompanyNameReadOnly 
+                          ? const Icon(Icons.lock_outline, size: 20)
+                          : null,
                     ),
                     
                     SizedBox(height: 16.h),
@@ -842,12 +852,16 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         SizedBox(height: 8.h),
         DropdownButtonFormField<String>(
           value: value,
+          isExpanded: true, // 선택된 값이 칸에 맞춰서 보이도록
           items: itemBuilderOverride != null
               ? itemBuilderOverride(items)
               : items.map((item) {
                   return DropdownMenuItem(
                     value: item,
-                    child: Text(item),
+                    child: Text(
+                      item,
+                      overflow: TextOverflow.ellipsis, // 긴 텍스트는 ... 처리
+                    ),
                   );
                 }).toList(),
           onChanged: onChanged,
@@ -874,6 +888,19 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
               vertical: 14.h,
             ),
           ),
+          selectedItemBuilder: (context) {
+            // 선택된 항목 표시용 빌더 (드롭다운이 열리지 않을 때 표시)
+            return items.map((item) {
+              return Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.black87,
+                ),
+              );
+            }).toList();
+          },
           validator: isRequired
               ? (value) {
                   if (value == null || value.isEmpty) {

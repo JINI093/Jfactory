@@ -215,26 +215,54 @@ class MainViewModel extends ChangeNotifier {
         if (!matchesLocation) return false;
       }
       
-      // 검색어 필터링 (검색어가 있으면 다른 필터보다 우선)
+      // 검색어 필터링 (카테고리/서브카테고리/서브서브카테고리에서만 검색)
       if (_searchQuery.isNotEmpty) {
         final searchLower = _searchQuery.toLowerCase().trim();
         if (searchLower.isEmpty) return true; // 빈 검색어는 모든 결과 표시
         
-        final matchesSearch = 
-            company.companyName.toLowerCase().contains(searchLower) ||
-            company.category.toLowerCase().contains(searchLower) ||
-            company.subcategory.toLowerCase().contains(searchLower) ||
-            (company.subSubcategory?.toLowerCase().contains(searchLower) ?? false) ||
-            (company.greeting?.toLowerCase().contains(searchLower) ?? false) ||
-            company.address.toLowerCase().contains(searchLower) ||
-            company.ceoName.toLowerCase().contains(searchLower) ||
-            company.phone.toLowerCase().contains(searchLower);
+        // 카테고리 필드에서 검색 (정확한 단어 매칭)
+        final categoryText = company.category.toLowerCase();
+        final subcategoryText = company.subcategory.toLowerCase();
+        final subSubcategoryText = (company.subSubcategory ?? '').toLowerCase();
         
-        if (!matchesSearch) {
-          debugPrint('🔍 검색어 불일치: "$searchLower" - 기업: ${company.companyName}');
+        // 카테고리, 서브카테고리, 서브서브카테고리에서 검색어가 포함되어 있는지 확인
+        // 줄바꿈과 특수문자를 제거하고 단어 단위로 검색
+        String normalizeForSearch(String text) {
+          return text
+              .replaceAll('\n', ' ')
+              .replaceAll('*', '')
+              .replaceAll('(', ' ')
+              .replaceAll(')', ' ')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim()
+              .toLowerCase();
+        }
+        
+        final normalizedCategory = normalizeForSearch(categoryText);
+        final normalizedSubcategory = normalizeForSearch(subcategoryText);
+        final normalizedSubSubcategory = normalizeForSearch(subSubcategoryText);
+        
+        // 영어/한글 매칭을 위한 검색어 변형
+        final searchVariants = [
+          searchLower,
+          // 한글 -> 영어 변환 (간단한 매핑)
+          if (searchLower == '로봇') 'robot',
+          if (searchLower == 'robot') '로봇',
+          if (searchLower == '모터') 'motor',
+          if (searchLower == 'motor') '모터',
+        ];
+        
+        // 검색어가 카테고리 필드 중 하나에 포함되어 있는지 확인
+        final matchesWithVariants = searchVariants.any((variant) =>
+            normalizedCategory.contains(variant) ||
+            normalizedSubcategory.contains(variant) ||
+            normalizedSubSubcategory.contains(variant));
+        
+        if (!matchesWithVariants) {
+          debugPrint('❌ 검색어 불일치: "$searchLower" - 기업: ${company.companyName}, 카테고리: $categoryText, 서브카테고리: $subcategoryText');
           return false;
         }
-        debugPrint('✅ 검색어 일치: "$searchLower" - 기업: ${company.companyName}');
+        debugPrint('✅ 검색어 일치: "$searchLower" - 기업: ${company.companyName}, 카테고리: $categoryText, 서브카테고리: $subcategoryText');
       }
       
       return true;

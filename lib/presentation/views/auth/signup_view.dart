@@ -1532,6 +1532,7 @@ class _SignupViewState extends State<SignupView> {
         'phone': userModel.phone,
         'userType': userModel.userType.toString().split('.').last, // 'individual' or 'company'
         'createdAt': FieldValue.serverTimestamp(),
+        'isApproved': true, // 자동 승인
       };
       
       // Add company-specific data if user is company type

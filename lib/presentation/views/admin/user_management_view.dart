@@ -378,7 +378,11 @@ class _UserManagementViewState extends State<UserManagementView> {
   TableRow _buildTableRow(int index, String userId, Map<String, dynamic> userData) {
     if (_selectedUserType == 'company') {
       final companyName = userData['companyName'] ?? '기업명 없음';
-      final isApproved = userData['isApproved'] ?? false;
+      // isApproved 필드가 없으면 자동 승인으로 간주 (true)
+      // 필드가 있으면 그 값을 사용, 없으면 true (자동 승인)
+      final isApproved = userData.containsKey('isApproved') 
+          ? (userData['isApproved'] == true || userData['isApproved'] == 'true')
+          : true; // 필드가 없으면 자동 승인
       final email = userData['email'] ?? '이메일 없음';
       final registrationPath = _getRegistrationPath(userData);
       final representativeName = userData['representativeName'] ?? 

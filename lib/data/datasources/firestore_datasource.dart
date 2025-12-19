@@ -82,7 +82,12 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
   @override
   Future<void> createUser(UserModel user) async {
     try {
-      await _usersCollection.doc(user.uid).set(user.toJson());
+      final userData = user.toJson();
+      // isApproved 필드가 없으면 자동 승인으로 설정
+      if (!userData.containsKey('isApproved')) {
+        userData['isApproved'] = true;
+      }
+      await _usersCollection.doc(user.uid).set(userData);
     } catch (e) {
       throw Exception('사용자 생성 실패: $e');
     }

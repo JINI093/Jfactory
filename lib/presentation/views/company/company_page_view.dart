@@ -191,49 +191,74 @@ class _CompanyPageViewState extends State<CompanyPageView> {
   }
 
   Widget _buildCompanyHeader(CompanyEntity company) {
+    // 로고 URL 확인 (logo 필드 또는 photos의 첫 번째 이미지)
+    final logoUrl = company.logo ?? (company.photos.isNotEmpty ? company.photos.first : null);
+    
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(16.w),
       color: Colors.white,
-      child: Center(
-        child: Container(
-          padding: EdgeInsets.all(16.w),
-          decoration: BoxDecoration(
-            color: const Color(0xFFDFEBFF),
-            borderRadius: BorderRadius.circular(8.r),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 48.w,
-                height: 48.h,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F),
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Center(
-                  child: Text(
-                    company.companyName.isNotEmpty ? company.companyName[0].toUpperCase() : 'J',
-                    style: TextStyle(
-                      fontSize: 24.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+      child: Container(
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDFEBFF),
+          borderRadius: BorderRadius.circular(8.r),
+        ),
+        child: Row(
+          children: [
+            // 로고 이미지
+            Container(
+              width: 48.w,
+              height: 48.h,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(
+                  color: Colors.grey[300]!,
+                  width: 1,
                 ),
               ),
-              SizedBox(width: 12.w),
-              Text(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.r),
+                child: logoUrl != null && logoUrl.isNotEmpty
+                    ? Image.network(
+                        logoUrl,
+                        width: 48.w,
+                        height: 48.h,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          // 네트워크 이미지 로드 실패 시 기본 로고 표시
+                          return Image.asset(
+                            'assets/icons/logo.png',
+                            width: 48.w,
+                            height: 48.h,
+                            fit: BoxFit.contain,
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        'assets/icons/logo.png',
+                        width: 48.w,
+                        height: 48.h,
+                        fit: BoxFit.contain,
+                      ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            // 기업명 (가로 길이 꽉 차게)
+            Expanded(
+              child: Text(
                 company.companyName.isNotEmpty ? company.companyName : '기업명 없음',
                 style: TextStyle(
                   fontSize: 18.sp,
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

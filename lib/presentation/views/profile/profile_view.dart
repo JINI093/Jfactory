@@ -714,7 +714,7 @@ class _ProfileViewState extends State<ProfileView> {
           '유료광고 등록은 어떻게 하나요? 에 대한 답변입니다 나중 예정입니다\n이 무료예제는 제목에 대한 내용을 보여줄 예정이며 관리자에서\n수정할 수 있습니다 여러의 더길 길면이 있는 곳 까지 잘가는 줄\n예정입니다 또한 유료광고는 게시글 유료광고는 즐 등록될 때 허\n터에 나온 서비스 올려야시면 광고를 구매하는 위들이는 나올니다',
         ),
         _buildSubItem('자재 제목', null),
-        _buildSubItem('자주 묻는 질문', null),
+        _buildFaqList(),
       ],
     );
   }
@@ -751,6 +751,164 @@ class _ProfileViewState extends State<ProfileView> {
             ),
           ),
         ] : [],
+      ),
+    );
+  }
+
+  Widget _buildFaqList() {
+    return Container(
+      margin: EdgeInsets.only(left: 16.w),
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('faqs')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              padding: EdgeInsets.all(16.w),
+              child: Center(
+                child: SizedBox(
+                  width: 20.w,
+                  height: 20.h,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          }
+
+          if (snapshot.hasError) {
+            debugPrint('FAQ 로드 오류: ${snapshot.error}');
+            // 인덱스 오류 시 orderBy 없이 재시도
+            return StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('faqs')
+                  .snapshots(),
+              builder: (context, retrySnapshot) {
+                if (retrySnapshot.connectionState == ConnectionState.waiting) {
+                  return Container(
+                    padding: EdgeInsets.all(16.w),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20.w,
+                        height: 20.h,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+
+                if (retrySnapshot.hasError) {
+                  return Container(
+                    padding: EdgeInsets.fromLTRB(32.w, 0, 16.w, 16.h),
+                    child: Text(
+                      'FAQ를 불러올 수 없습니다.',
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  );
+                }
+
+                final faqs = retrySnapshot.data?.docs ?? [];
+                
+                if (faqs.isEmpty) {
+                  return Container(
+                    padding: EdgeInsets.fromLTRB(32.w, 0, 16.w, 16.h),
+                    child: Text(
+                      '등록된 FAQ가 없습니다.',
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  );
+                }
+
+                // 클라이언트에서 정렬 (createdAt 기준)
+                faqs.sort((a, b) {
+                  final aData = a.data() as Map<String, dynamic>;
+                  final bData = b.data() as Map<String, dynamic>;
+                  final aCreatedAt = aData['createdAt'];
+                  final bCreatedAt = bData['createdAt'];
+                  
+                  if (aCreatedAt == null && bCreatedAt == null) return 0;
+                  if (aCreatedAt == null) return 1;
+                  if (bCreatedAt == null) return -1;
+                  
+                  DateTime aDate;
+                  DateTime bDate;
+                  
+                  try {
+                    aDate = aCreatedAt is Timestamp ? aCreatedAt.toDate() : DateTime.parse(aCreatedAt.toString());
+                    bDate = bCreatedAt is Timestamp ? bCreatedAt.toDate() : DateTime.parse(bCreatedAt.toString());
+                    return bDate.compareTo(aDate); // 최신순
+                  } catch (e) {
+                    return 0;
+                  }
+                });
+
+                return Column(
+                  children: faqs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final title = data['title'] ?? '제목 없음';
+                    final content = data['content'] ?? '내용 없음';
+                    
+                    return _buildSubItem(title, content);
+                  }).toList(),
+                );
+              },
+            );
+          }
+
+          final faqs = snapshot.data?.docs ?? [];
+          
+          if (faqs.isEmpty) {
+            return Container(
+              padding: EdgeInsets.fromLTRB(32.w, 0, 16.w, 16.h),
+              child: Text(
+                '등록된 FAQ가 없습니다.',
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: Colors.grey[600],
+                ),
+              ),
+            );
+          }
+
+          // 클라이언트에서 정렬 (createdAt 기준)
+          faqs.sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>;
+            final bData = b.data() as Map<String, dynamic>;
+            final aCreatedAt = aData['createdAt'];
+            final bCreatedAt = bData['createdAt'];
+            
+            if (aCreatedAt == null && bCreatedAt == null) return 0;
+            if (aCreatedAt == null) return 1;
+            if (bCreatedAt == null) return -1;
+            
+            DateTime aDate;
+            DateTime bDate;
+            
+            try {
+              aDate = aCreatedAt is Timestamp ? aCreatedAt.toDate() : DateTime.parse(aCreatedAt.toString());
+              bDate = bCreatedAt is Timestamp ? bCreatedAt.toDate() : DateTime.parse(bCreatedAt.toString());
+              return bDate.compareTo(aDate); // 최신순
+            } catch (e) {
+              return 0;
+            }
+          });
+
+          return Column(
+            children: faqs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final title = data['title'] ?? '제목 없음';
+              final content = data['content'] ?? '내용 없음';
+              
+              return _buildSubItem(title, content);
+            }).toList(),
+          );
+        },
       ),
     );
   }
