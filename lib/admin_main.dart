@@ -18,7 +18,7 @@ void main() async {
     }
     
     // fir-test-96091 프로젝트로 초기화 ([DEFAULT] 이름 사용)
-    await Firebase.initializeApp(
+      await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: 'AIzaSyCFYUY93SUSMC7ZD9fhsH4YFFOs-3cl-vo',
         appId: '1:468556282634:web:a8c16384daad9e3406d8f3',
@@ -27,7 +27,7 @@ void main() async {
         authDomain: 'fir-test-96091.firebaseapp.com',
         storageBucket: 'fir-test-96091.firebasestorage.app',
       ),
-    );
+      );
     debugPrint('✅ Admin App: Firebase initialized successfully with fir-test-96091');
   } catch (e) {
     debugPrint('❌ Admin App: Firebase initialization failed: $e');

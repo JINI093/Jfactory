@@ -3,8 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../viewmodels/company_viewmodel.dart';
 import '../../viewmodels/favorite_viewmodel.dart';
+import '../../viewmodels/main_viewmodel.dart';
+import '../../widgets/naver_map_widget.dart';
+import '../../../services/location_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../../domain/entities/post_entity.dart';
@@ -25,6 +29,7 @@ class CompanyDetailView extends StatefulWidget {
 class _CompanyDetailViewState extends State<CompanyDetailView> {
   List<PostEntity> _posts = [];
   bool _isLoadingPosts = false;
+  final LocationService _locationService = LocationService();
 
   @override
   void initState() {
@@ -93,7 +98,10 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
         title: const Text('기업 소개'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            context.read<MainViewModel>().clearFilters();
+            context.pop();
+          },
         ),
         actions: [
           Consumer2<CompanyViewModel, FavoriteViewModel>(
@@ -441,6 +449,16 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
   }
 
   Widget _buildMapSection(CompanyEntity company) {
+    final address = company.address.trim();
+    final detailAddress = company.detailAddress.trim();
+    final fullAddress = detailAddress.isNotEmpty ? '$address $detailAddress' : address;
+    final latitude = company.latitude;
+    final longitude = company.longitude;
+
+    if (fullAddress.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.all(16),
@@ -458,25 +476,83 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
               const Text('주소  ', style: TextStyle(fontSize: 14, color: Colors.black87)),
               Expanded(
                 child: Text(
-                  company.address,
+                  fullAddress,
                   style: const TextStyle(fontSize: 14, color: Colors.black87),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            height: 180,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
+          if (latitude != null && longitude != null)
+            _buildMapContainer(company)
+          else
+            FutureBuilder<Position?>(
+              future: _locationService.getCoordinatesFromAddress(fullAddress),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return _buildMapLoading();
+                }
+                final position = snapshot.data;
+                if (position != null) {
+                  final mappedCompany = company.copyWith(
+                    latitude: position.latitude,
+                    longitude: position.longitude,
+                  );
+                  return _buildMapContainer(mappedCompany);
+                }
+                return _buildMapUnavailable();
+              },
             ),
-            child: Center(
-              child: Icon(Icons.map, size: 40, color: Colors.grey[500]),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapContainer(CompanyEntity company) {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: NaverMapWidget(
+          companies: [company],
+          onCompanyTapped: (_) {},
+          centerOnCompany: true,
+          showCurrentLocationMarker: false,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapLoading() {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+
+  Widget _buildMapUnavailable() {
+    return Container(
+      height: 150,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Center(
+        child: Icon(Icons.location_on, size: 40, color: Colors.grey[500]),
       ),
     );
   }

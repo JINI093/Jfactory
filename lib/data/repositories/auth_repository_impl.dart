@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/firebase_auth_datasource.dart';
@@ -219,22 +220,42 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> deleteAccount() async {
-    try {
-      final currentUser = await _authDataSource.getCurrentUser();
-      if (currentUser == null) {
-        throw Exception('로그인된 사용자가 없습니다.');
-      }
+    final currentUser = await _authDataSource.getCurrentUser();
+    if (currentUser == null) {
+      throw Exception('로그인된 사용자가 없습니다.');
+    }
 
-      // Firestore에서 사용자 데이터 삭제
-      await _firestoreDataSource.deleteUser(currentUser.uid);
-      
-      // Firebase Auth에서 사용자 삭제
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        await user.delete();
-      }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Firebase Auth 사용자가 없습니다.');
+    }
+
+    // Firebase Auth에서 사용자 삭제를 먼저 시도
+    // 성공하면 Firestore 삭제, 실패하면 Firestore 삭제도 하지 않음
+    try {
+      await user.delete();
     } catch (e) {
-      throw Exception('계정 삭제 중 오류 발생: $e');
+      // Firebase Auth 삭제 실패 시 더 구체적인 오류 메시지 제공
+      String errorMessage = '계정 삭제 중 오류가 발생했습니다.';
+      
+      if (e.toString().contains('requires-recent-login')) {
+        errorMessage = '보안을 위해 최근에 로그인한 사용자만 계정을 삭제할 수 있습니다. 로그아웃 후 다시 로그인해주세요.';
+      } else if (e.toString().contains('network')) {
+        errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+      } else {
+        errorMessage = '계정 삭제 중 오류가 발생했습니다: ${e.toString()}';
+      }
+      
+      throw Exception(errorMessage);
+    }
+
+    // Firebase Auth 삭제 성공 후 Firestore에서 사용자 데이터 삭제
+    try {
+      await _firestoreDataSource.deleteUser(currentUser.uid);
+    } catch (e) {
+      // Firestore 삭제 실패는 로그만 남기고 계속 진행
+      // Firebase Auth는 이미 삭제되었으므로
+      debugPrint('Firestore 사용자 데이터 삭제 실패: $e');
     }
   }
 

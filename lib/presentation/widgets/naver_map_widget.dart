@@ -10,11 +10,15 @@ import '../../domain/entities/company_entity.dart';
 class NaverMapWidget extends StatefulWidget {
   final List<CompanyEntity> companies;
   final Function(CompanyEntity)? onCompanyTapped;
+  final bool centerOnCompany;
+  final bool showCurrentLocationMarker;
 
   const NaverMapWidget({
     super.key,
     required this.companies,
     this.onCompanyTapped,
+    this.centerOnCompany = false,
+    this.showCurrentLocationMarker = true,
   });
 
   @override
@@ -42,26 +46,50 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
   Future<void> _initializeMap() async {
     try {
       debugPrint('🗺️ [1/4] 위치 정보 가져오기 시작');
-      
-      final position = await _locationService.getCurrentLocation();
-      
-      if (position != null) {
-        _currentPosition = position;
-        debugPrint('✅ [1/4] 현재 위치 획득: ${position.latitude}, ${position.longitude}');
-      } else {
-        debugPrint('⚠️ [1/4] 위치 정보 없음, 기본 위치 사용');
-        _currentPosition = Position(
-          latitude: 37.5665,
-          longitude: 126.9780,
-          timestamp: DateTime.now(),
-          accuracy: 0,
-          altitude: 0,
-          heading: 0,
-          speed: 0,
-          speedAccuracy: 0,
-          altitudeAccuracy: 0,
-          headingAccuracy: 0,
+
+      if (widget.centerOnCompany && widget.companies.isNotEmpty) {
+        final company = widget.companies.firstWhere(
+          (c) => c.latitude != null && c.longitude != null,
+          orElse: () => widget.companies.first,
         );
+        if (company.latitude != null && company.longitude != null) {
+          _currentPosition = Position(
+            latitude: company.latitude!,
+            longitude: company.longitude!,
+            timestamp: DateTime.now(),
+            accuracy: 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+          );
+          debugPrint('✅ [1/4] 기업 위치로 중심 설정: ${company.latitude}, ${company.longitude}');
+        }
+      }
+
+      if (_currentPosition == null) {
+        final position = await _locationService.getCurrentLocation();
+
+        if (position != null) {
+          _currentPosition = position;
+          debugPrint('✅ [1/4] 현재 위치 획득: ${position.latitude}, ${position.longitude}');
+        } else {
+          debugPrint('⚠️ [1/4] 위치 정보 없음, 기본 위치 사용');
+          _currentPosition = Position(
+            latitude: 37.5665,
+            longitude: 126.9780,
+            timestamp: DateTime.now(),
+            accuracy: 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+          );
+        }
       }
       
       debugPrint('🗺️ [2/4] 지도 이미지 URL 생성 시작');
@@ -210,7 +238,9 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       final googleApiKey = dotenv.env['Google_Maps_API'] ?? 'AIzaSyAQaAqDNxtkH0D_tPv39VtqIzn9dgZnViA';
       
       // 현재 위치 마커 (빨간색, 큰 사이즈)
-      final currentLocationMarker = '&markers=color:red%7Csize:mid%7Clabel:ME%7C$lat,$lng';
+      final currentLocationMarker = widget.showCurrentLocationMarker
+          ? '&markers=color:red%7Csize:mid%7Clabel:ME%7C$lat,$lng'
+          : '';
       
       // Google Static Maps API URL 생성
       // 참고: URL 길이 제한은 8192자입니다

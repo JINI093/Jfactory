@@ -10,6 +10,7 @@ import 'dart:io';
 import '../../../core/router/route_names.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../viewmodels/auth_viewmodel.dart';
+import '../../viewmodels/main_viewmodel.dart';
 import '../../../domain/entities/purchase_entity.dart' as entities;
 import 'package:url_launcher/url_launcher.dart';
 import '../../../domain/entities/inquiry_entity.dart';
@@ -89,10 +90,11 @@ class _ProfileViewState extends State<ProfileView> {
     '표면처리': '*표면처리\n*건조기\n(열,UV,LED)',
     '인쇄': '인쇄',
     '기계제작': '기계 제작',
-    '공구 MALL': '공구 MALL',
-    '볼트': '공구 MALL',
+    '공구 MALL': 'MALL',
+    'MALL': 'MALL',
+    '볼트': 'MALL',
     '유공압': '*유공압\n*모터',
-    '전기 자재': '공구 MALL',
+    '전기 자재': 'MALL',
     'Vision': '*Vision\n(비전)\n*Robot\n(무인화)',
     'Motor': '*유공압\n*모터',
   };
@@ -204,6 +206,18 @@ class _ProfileViewState extends State<ProfileView> {
         throw Exception('사용자가 로그인되지 않았습니다.');
       }
       
+      // 사용자 타입 확인
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+      
+      String userType = '';
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        userType = userData['userType']?.toString() ?? '';
+      }
+      
       // Load company data from Firestore companies collection
       DocumentSnapshot companyDoc;
       
@@ -226,13 +240,7 @@ class _ProfileViewState extends State<ProfileView> {
         }
       }
       
-      // If still not found, try with the specific document ID as fallback
-      if (!companyDoc.exists) {
-        companyDoc = await FirebaseFirestore.instance
-            .collection('companies')
-            .doc('iXg3uBzc7VZvhcLd0jVqHGJ9Z972')
-            .get();
-      }
+      // 하드코딩된 fallback 제거 - 개인 계정은 기업 데이터가 없으면 null로 처리
       
       if (mounted) {
         if (companyDoc.exists && companyDoc.data() != null) {
@@ -242,10 +250,18 @@ class _ProfileViewState extends State<ProfileView> {
           });
           _populateCompanyFields();
         } else {
-          setState(() {
-            _companyData = null;
-            _isLoadingCompanyData = false;
-          });
+          // company 데이터가 없고 userType이 company가 아닐 때만 빈 상태 처리
+          if (userType != 'company') {
+            setState(() {
+              _companyData = null;
+              _isLoadingCompanyData = false;
+            });
+          } else {
+            setState(() {
+              _companyData = null;
+              _isLoadingCompanyData = false;
+            });
+          }
         }
       }
     } catch (e) {
@@ -287,6 +303,11 @@ class _ProfileViewState extends State<ProfileView> {
     _selectedCategory = _mapLegacyCategory(legacyCategory);
     _selectedSubcategory = _companyData!['subcategory'];
     _selectedSubSubcategory = _companyData!['subSubcategory'];
+
+    // 계정 관리에 표시되는 회사명 보정 (users 문서가 아직 갱신되지 않은 경우)
+    if (_accountCompanyNameController.text.isEmpty) {
+      _accountCompanyNameController.text = _companyData!['companyName'] ?? '';
+    }
     
     // Populate history items
     if (_companyData!['history'] != null) {
@@ -365,6 +386,7 @@ class _ProfileViewState extends State<ProfileView> {
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
         onPressed: () {
+          context.read<MainViewModel>().clearFilters();
           if (context.canPop()) {
             context.pop();
           } else {
@@ -709,11 +731,6 @@ class _ProfileViewState extends State<ProfileView> {
         size: 24.sp,
       ),
       children: [
-        _buildSubItem(
-          '유료광고',
-          '유료광고 등록은 어떻게 하나요? 에 대한 답변입니다 나중 예정입니다\n이 무료예제는 제목에 대한 내용을 보여줄 예정이며 관리자에서\n수정할 수 있습니다 여러의 더길 길면이 있는 곳 까지 잘가는 줄\n예정입니다 또한 유료광고는 게시글 유료광고는 즐 등록될 때 허\n터에 나온 서비스 올려야시면 광고를 구매하는 위들이는 나올니다',
-        ),
-        _buildSubItem('자재 제목', null),
         _buildFaqList(),
       ],
     );
@@ -1351,47 +1368,54 @@ class _ProfileViewState extends State<ProfileView> {
   }
 
   Widget _buildPaymentSection() {
-    return ExpansionTile(
-      title: Text(
-        '게시글',
-        style: TextStyle(
-          fontSize: 16.sp,
-          fontWeight: FontWeight.w500,
-          color: Colors.black,
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () {
-              context.push('/post-registration');
-            },
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE3F2FD),
-                borderRadius: BorderRadius.circular(4.r),
-              ),
-              child: Text(
-                '게시글 등록',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: const Color(0xFF1E3A5F),
-                ),
-              ),
+    return Consumer<AuthViewModel>(
+      builder: (context, authViewModel, child) {
+        return ExpansionTile(
+          title: Text(
+            '게시글',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w500,
+              color: Colors.black,
             ),
           ),
-          SizedBox(width: 8.w),
-          const Icon(Icons.expand_more),
-        ],
-      ),
-      children: [
-        Container(
-          padding: EdgeInsets.all(16.w),
-          child: _buildPostsList(),
-        ),
-      ],
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 기업회원에게만 게시글 등록 버튼 표시
+              if (authViewModel.currentUser?.userType == UserType.company)
+                GestureDetector(
+                  onTap: () {
+                    context.push('/post-registration');
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE3F2FD),
+                      borderRadius: BorderRadius.circular(4.r),
+                    ),
+                    child: Text(
+                      '게시글 등록',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: const Color(0xFF1E3A5F),
+                      ),
+                    ),
+                  ),
+                ),
+              if (authViewModel.currentUser?.userType == UserType.company)
+                SizedBox(width: 8.w),
+              const Icon(Icons.expand_more),
+            ],
+          ),
+          children: [
+            Container(
+              padding: EdgeInsets.all(16.w),
+              child: _buildPostsList(),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2664,10 +2688,12 @@ class _ProfileViewState extends State<ProfileView> {
     return GestureDetector(
       onTap: () {
         if (label == '홈') {
+          context.read<MainViewModel>().clearFilters();
           context.go('/main');
         } else if (label == '좋아요') {
           context.go('/favorites');
         } else if (label == '되돌가기') {
+          context.read<MainViewModel>().clearFilters();
           if (context.canPop()) {
             context.pop();
           } else {
@@ -2913,24 +2939,44 @@ class _ProfileViewState extends State<ProfileView> {
   
   void _deleteAccount() async {
     try {
-      // TODO: Implement account deletion
-      // await authViewModel.deleteAccount();
+      final authViewModel = context.read<AuthViewModel>();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('회원탈퇴가 완료되었습니다.'),
-          backgroundColor: Colors.green,
+      // 로딩 표시
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
         ),
       );
       
-      context.go('/login');
+      // 계정 삭제 실행
+      await authViewModel.deleteAccount();
+      
+      if (mounted) {
+        Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('회원탈퇴가 완료되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // 로그인 화면으로 이동
+        context.go('/login');
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('회원탈퇴 실패: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        Navigator.of(context).pop(); // 로딩 다이얼로그 닫기
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('회원탈퇴 실패: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
   
@@ -3326,6 +3372,10 @@ class _ProfileViewState extends State<ProfileView> {
       }
 
       // Prepare updated company data
+      final existingPhotos = _companyData?['photos'];
+      final resolvedPhotos = photoUrl != null
+          ? [photoUrl]
+          : (existingPhotos is List ? List<String>.from(existingPhotos) : <String>[]);
       final updatedData = {
         'companyName': _companyNameController.text.trim(),
         'ceoName': _ceoNameController.text.trim(),
@@ -3347,6 +3397,7 @@ class _ProfileViewState extends State<ProfileView> {
           'details': item['details'] ?? '',
         }).where((item) => item['name']!.isNotEmpty || item['details']!.isNotEmpty).toList(),
         'photo': photoUrl,
+        'photos': resolvedPhotos,
         'logo': logoUrl,
         'businessLicenseImage': businessLicenseUrl,
         'updatedAt': FieldValue.serverTimestamp(),

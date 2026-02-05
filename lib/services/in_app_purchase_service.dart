@@ -199,7 +199,7 @@ class InAppPurchaseService {
         case basicAdProductId:
           return 10000.0; // 10,000 KRW
         case premiumAdProductId:
-          return 30000.0; // 30,000 KRW
+          return 3000.0; // 3,000 KRW (1일 3천원)
         case featuredAdProductId:
           return 50000.0; // 50,000 KRW
         default:

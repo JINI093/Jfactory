@@ -256,7 +256,8 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
       // 추가 매핑 (실제 Firebase 데이터와 일치하도록)
       '기계 제작': '기계 제작',
       '인쇄': '인쇄',
-      '공구 MALL': '공구 MALL',
+      '공구 MALL': 'MALL',
+      'MALL': 'MALL',
     };
     
     final normalized = categoryMapping[category] ?? category;

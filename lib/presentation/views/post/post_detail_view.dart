@@ -64,6 +64,14 @@ class _PostDetailViewState extends State<PostDetailView> {
       final data = doc.data() as Map<String, dynamic>;
       data['id'] = doc.id;
       
+      // 이미지 데이터 디버그
+      debugPrint('📸 게시글 이미지 데이터: ${data['images']}');
+      debugPrint('📸 이미지 타입: ${data['images']?.runtimeType}');
+      if (data['images'] != null && data['images'] is List) {
+        debugPrint('📸 이미지 개수: ${(data['images'] as List).length}');
+        debugPrint('📸 이미지 URL들: ${data['images']}');
+      }
+      
       // 조회수 증가 (FieldValue.increment 사용 - 동시성 안전)
       try {
         final currentViewCount = (data['viewCount'] as int?) ?? 0;
@@ -185,7 +193,20 @@ class _PostDetailViewState extends State<PostDetailView> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            // 관리자 페이지에서 Navigator.push로 들어온 경우를 처리
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              // Navigator.pop이 불가능한 경우 (예: 웹 환경)
+              try {
+                context.pop();
+              } catch (e) {
+                // context.pop도 실패하면 Navigator.pop을 강제 시도
+                Navigator.of(context).pop();
+              }
+            }
+          },
         ),
         actions: [
           IconButton(
@@ -261,29 +282,146 @@ class _PostDetailViewState extends State<PostDetailView> {
             
             // 이미지
             if (post.images.isNotEmpty) ...[
-              Container(
+              SizedBox(
                 height: 200.h,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.r),
-                  color: Colors.grey[200],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: Image.network(
-                    post.images.first,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: post.images.length,
+                  itemBuilder: (context, index) {
+                    final imageUrl = post.images[index];
+                    debugPrint('🖼️ 이미지 로드 시도: $imageUrl (인덱스: $index)');
+                    
+                    // 이미지 URL 유효성 검사
+                    if (imageUrl.isEmpty || !imageUrl.startsWith('http')) {
+                      debugPrint('⚠️ 유효하지 않은 이미지 URL: $imageUrl');
                       return Container(
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.image_not_supported,
-                          size: 48.sp,
-                          color: Colors.grey[600],
+                        width: 300.w,
+                        margin: EdgeInsets.only(right: 8.w),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8.r),
+                          color: Colors.grey[200],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.image_not_supported,
+                              size: 48.sp,
+                              color: Colors.grey[600],
+                            ),
+                            SizedBox(height: 8.h),
+                            Text(
+                              '유효하지 않은 이미지 URL',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ),
                       );
-                    },
-                  ),
+                    }
+                    
+                    return Container(
+                      width: 300.w,
+                      margin: EdgeInsets.only(right: 8.w),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8.r),
+                        color: Colors.grey[200],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) {
+                              debugPrint('✅ 이미지 로드 완료: $imageUrl');
+                              return child;
+                            }
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            debugPrint('❌ 이미지 로드 실패: $imageUrl');
+                            debugPrint('❌ 오류: $error');
+                            debugPrint('❌ StackTrace: $stackTrace');
+                            return Container(
+                              color: Colors.grey[300],
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.image_not_supported,
+                                    size: 48.sp,
+                                    color: Colors.grey[600],
+                                  ),
+                                  SizedBox(height: 8.h),
+                                  Text(
+                                    '이미지를 불러올 수 없습니다',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                  SizedBox(height: 4.h),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.w),
+                                    child: Text(
+                                      imageUrl.length > 30 
+                                          ? '${imageUrl.substring(0, 30)}...'
+                                          : imageUrl,
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 16.h),
+            ] else ...[
+              // 이미지가 없는 경우 디버그 정보 표시
+              Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20.sp,
+                      color: Colors.grey[600],
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      '등록된 이미지가 없습니다.',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               SizedBox(height: 16.h),

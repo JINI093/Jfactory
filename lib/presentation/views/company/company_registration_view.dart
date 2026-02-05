@@ -1709,10 +1709,14 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(currentUser.uid)
-            .update({
+            .set({
               'companyRegistered': true,
               'companyRegistrationDate': FieldValue.serverTimestamp(),
-            });
+              'userType': 'company',
+              'companyName': companyName,
+              if (businessLicenseUrl != null && businessLicenseUrl.isNotEmpty)
+                'businessLicenseUrl': businessLicenseUrl,
+            }, SetOptions(merge: true));
       } catch (e) {
         debugPrint('⚠️ users 컬렉션 업데이트 실패 (무시): $e');
         // Continue even if users update fails

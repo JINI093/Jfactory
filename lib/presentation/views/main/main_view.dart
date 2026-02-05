@@ -27,6 +27,7 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
   final GlobalKey _companiesSectionKey = GlobalKey();
   bool _hasInitialized = false;
   String? _previousRoute;
+  bool _hasNavigatedAway = false;
 
   @override
   void initState() {
@@ -36,11 +37,23 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         try {
-          context.read<MainViewModel>().loadCompanies();
+          final viewModel = context.read<MainViewModel>();
+          // 메인 진입 시 검색/필터 상태 초기화
+          if (viewModel.searchQuery.isNotEmpty ||
+              viewModel.selectedCategory != null ||
+              viewModel.selectedLocations.isNotEmpty) {
+            viewModel.clearFilters();
+            _searchController.clear();
+          }
+          viewModel.loadCompanies();
           _checkCompanyRegistration();
           _hasInitialized = true;
+          // 초기 경로 저장
+          final router = GoRouter.of(context);
+          _previousRoute = router.routerDelegate.currentConfiguration.uri.toString();
         } catch (e) {
           // Handle error silently for now
+          _previousRoute = RouteNames.main;
         }
       }
     });
@@ -69,7 +82,8 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
           // 이전 경로가 메인이 아니고 현재 경로가 메인인 경우 (다른 화면에서 돌아온 경우)
           if (_previousRoute != null && 
               _previousRoute != RouteNames.main && 
-              currentLocation == RouteNames.main) {
+              currentLocation == RouteNames.main &&
+              _hasNavigatedAway) {
             // 검색 결과 초기화
             final viewModel = context.read<MainViewModel>();
             if (viewModel.searchQuery.isNotEmpty || 
@@ -78,22 +92,45 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
               viewModel.clearFilters();
               _searchController.clear();
             }
+            _hasNavigatedAway = false;
           }
+          
+          // 현재 경로가 메인이 아니면 플래그 설정
+          if (currentLocation != RouteNames.main) {
+            _hasNavigatedAway = true;
+          }
+          
           _previousRoute = currentLocation;
         } catch (e) {
           // GoRouter를 사용할 수 없는 경우 무시
           debugPrint('Error getting current route: $e');
         }
       });
-    } else if (!_hasInitialized) {
-      // 첫 초기화 시 현재 경로 저장
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 앱이 다시 활성화될 때도 확인
+    if (state == AppLifecycleState.resumed && _hasNavigatedAway) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           try {
             final router = GoRouter.of(context);
-            _previousRoute = router.routerDelegate.currentConfiguration.uri.toString();
+            final currentLocation = router.routerDelegate.currentConfiguration.uri.toString();
+            if (currentLocation == RouteNames.main) {
+              final viewModel = context.read<MainViewModel>();
+              if (viewModel.searchQuery.isNotEmpty || 
+                  viewModel.selectedCategory != null ||
+                  viewModel.selectedLocations.isNotEmpty) {
+                viewModel.clearFilters();
+                _searchController.clear();
+              }
+              _hasNavigatedAway = false;
+            }
           } catch (e) {
-            _previousRoute = RouteNames.main;
+            debugPrint('Error in lifecycle state: $e');
           }
         }
       });
@@ -157,6 +194,45 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    // 다른 화면에서 돌아왔을 때 검색 결과 초기화
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      try {
+        final viewModel = context.read<MainViewModel>();
+        if (viewModel.searchQuery.isEmpty && _searchController.text.isNotEmpty) {
+          _searchController.clear();
+        }
+        final router = GoRouter.of(context);
+        final currentLocation = router.routerDelegate.currentConfiguration.uri.toString();
+        
+        // 이전 경로가 메인이 아니고 현재 경로가 메인인 경우 (다른 화면에서 돌아온 경우)
+        if (_previousRoute != null && 
+            _previousRoute != RouteNames.main && 
+            currentLocation == RouteNames.main &&
+            _hasNavigatedAway) {
+          // 검색 결과 초기화
+          if (viewModel.searchQuery.isNotEmpty || 
+              viewModel.selectedCategory != null ||
+              viewModel.selectedLocations.isNotEmpty) {
+            viewModel.clearFilters();
+            _searchController.clear();
+          }
+          _hasNavigatedAway = false;
+        }
+        
+        // 현재 경로가 메인이 아니면 플래그 설정
+        if (currentLocation != RouteNames.main && currentLocation != _previousRoute) {
+          _hasNavigatedAway = true;
+        }
+        
+        _previousRoute = currentLocation;
+      } catch (e) {
+        // GoRouter를 사용할 수 없는 경우 무시
+        debugPrint('Error checking route in build: $e');
+      }
+    });
+    
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),

@@ -14,6 +14,14 @@ enum CompanyLoadingState {
 class CompanyViewModel extends ChangeNotifier {
   final GetCompaniesUseCase _getCompaniesUseCase;
   final GetCompanyByIdUseCase _getCompanyByIdUseCase;
+  
+  bool _isMachineManufacturingAll(String category) {
+    String normalize(String text) {
+      return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+    }
+    final normalized = normalize(category);
+    return normalized.contains('기계제작') && normalized.contains('전체');
+  }
 
   CompanyViewModel({
     required GetCompaniesUseCase getCompaniesUseCase,
@@ -60,10 +68,11 @@ class CompanyViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final isMachineAll = _isMachineManufacturingAll(category);
       // limit을 크게 설정하여 클라이언트에서 필터링할 수 있도록 충분히 가져옴
       final allCompanies = await _getCompaniesUseCase(GetCompaniesParams(
-        category: category,
-        subcategory: subcategory,
+        category: isMachineAll ? null : category,
+        subcategory: isMachineAll ? null : subcategory,
         limit: 200, // 충분히 많이 가져옴
         orderBy: 'adPayment',
         descending: true,
@@ -126,15 +135,53 @@ class CompanyViewModel extends ChangeNotifier {
   // Apply filters to companies
   void _applyFilters() {
     _filteredCompanies = _companies.where((company) {
-      // 카테고리 필터링 (정확한 매칭)
+      // 카테고리 필터링
       if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
         final companyCategory = company.category.trim();
         final selectedCategory = _selectedCategory!.trim();
         
-        // 정확한 문자열 매칭 (대소문자 구분 없이)
-        if (companyCategory.toLowerCase() != selectedCategory.toLowerCase()) {
-          debugPrint('❌ 카테고리 불일치: company="$companyCategory" selected="$selectedCategory"');
-          return false;
+        String normalize(String text) {
+          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+        }
+        
+        bool isMachineManufacturingAll(String category) {
+          final normalized = normalize(category);
+          return normalized.contains('기계제작') && normalized.contains('전체');
+        }
+        
+        bool isMachineManufacturingRelated(String category) {
+          final normalizedCompany = normalize(category);
+          if (normalizedCompany.contains('mall')) {
+            return false;
+          }
+          if (normalizedCompany.contains('기계제작') || normalizedCompany.contains('기계 제작')) {
+            return true;
+          }
+          const relatedTitles = [
+            '기계제작\n(파트별)',
+            '*금형/몰드\n*3D 프린터',
+            '*표면처리\n*건조기\n(열,UV,LED)',
+            '*Vision\n(비전)\n*Robot\n(무인화)',
+          ];
+          final normalizedSet = relatedTitles.map((title) => normalize(title)).toSet();
+          return normalizedSet.any((title) => normalizedCompany.contains(title));
+        }
+        
+        // "기계제작(전체)" 선택 시 관련 카테고리 전체 포함 (MALL 제외)
+        if (isMachineManufacturingAll(selectedCategory)) {
+          if (!isMachineManufacturingRelated(companyCategory)) {
+            debugPrint('❌ 기계제작(전체) 필터: company="$companyCategory"는 관련 카테고리가 아님');
+            return false;
+          }
+        } else {
+          // 정확한 문자열 매칭 (대소문자 구분 없이)
+          final normalizedCompany = normalize(companyCategory);
+          final normalizedSelected = normalize(selectedCategory);
+          
+          if (normalizedCompany != normalizedSelected) {
+            debugPrint('❌ 카테고리 불일치: company="$companyCategory" selected="$selectedCategory"');
+            return false;
+          }
         }
       }
       

@@ -5,6 +5,14 @@ import '../../domain/usecases/company/get_companies.dart';
 class MainViewModel extends ChangeNotifier {
   final GetCompaniesUseCase _getCompaniesUseCase;
   
+  // "기계제작(전체)"에 포함될 관련 카테고리들
+  static const List<String> _machineRelatedCategoryTitles = [
+    '기계제작\n(파트별)',
+    '*금형/몰드\n*3D 프린터',
+    '*표면처리\n*건조기\n(열,UV,LED)',
+    '*Vision\n(비전)\n*Robot\n(무인화)',
+  ];
+  
   List<CompanyEntity> _companies = [];
   List<CompanyEntity> _filteredCompanies = [];
   List<Map<String, String>> _selectedLocations = [];
@@ -131,7 +139,13 @@ class MainViewModel extends ChangeNotifier {
 
   void updateCategoryFilter(String? category, String? subcategory) {
     _selectedCategory = category;
-    _selectedSubcategory = subcategory;
+    if (subcategory == null ||
+        subcategory == '전체' ||
+        subcategory == '전체 하위카테고리') {
+      _selectedSubcategory = null;
+    } else {
+      _selectedSubcategory = subcategory;
+    }
     _applyAllFilters();
     notifyListeners();
   }
@@ -162,17 +176,46 @@ class MainViewModel extends ChangeNotifier {
           return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
         }
         
+        bool isMachineManufacturingAll(String category) {
+          final normalized = normalize(category);
+          return normalized.contains('기계제작') && normalized.contains('전체');
+        }
+        
+        bool isMachineManufacturingRelated(String category) {
+          final normalizedCompany = normalize(category);
+          if (normalizedCompany.contains('mall')) {
+            return false;
+          }
+          if (normalizedCompany.contains('기계제작') || normalizedCompany.contains('기계 제작')) {
+            return true;
+          }
+          final normalizedSet = _machineRelatedCategoryTitles
+              .map((title) => normalize(title))
+              .toSet();
+          return normalizedSet.any((title) => normalizedCompany.contains(title));
+        }
+        
         final normalizedCompany = normalize(company.category);
         final normalizedSelected = normalize(_selectedCategory!);
         
-        if (normalizedCompany != normalizedSelected) {
-          return false;
+        // "기계제작(전체)" 선택 시 관련 카테고리 전체 포함 (MALL 제외)
+        if (isMachineManufacturingAll(_selectedCategory!)) {
+          if (!isMachineManufacturingRelated(company.category)) {
+            return false;
+          }
+        } else {
+          // 정확한 매칭
+          if (normalizedCompany != normalizedSelected) {
+            return false;
+          }
         }
       }
       
       // 세부카테고리 필터 적용
-      if (_selectedSubcategory != null && _selectedSubcategory!.isNotEmpty && 
-          _selectedSubcategory != '전체') {
+      if (_selectedSubcategory != null &&
+          _selectedSubcategory!.isNotEmpty &&
+          _selectedSubcategory != '전체' &&
+          _selectedSubcategory != '전체 하위카테고리') {
         // "전체 하위카테고리" 선택 시 해당 카테고리의 모든 하위 카테고리 포함
         if (_selectedSubcategory == '전체 하위카테고리') {
           // 메인 카테고리만 필터링 (모든 하위 카테고리 포함)

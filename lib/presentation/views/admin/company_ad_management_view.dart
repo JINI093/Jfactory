@@ -14,7 +14,7 @@ class _CompanyAdManagementViewState extends State<CompanyAdManagementView> {
   String _selectedTab = 'premium'; // 'premium', 'active', 'scheduled'
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _premiumPriceController = TextEditingController(text: '30000');
+  final TextEditingController _premiumPriceController = TextEditingController(text: '3000');
   int _currentPage = 1;
   final int _itemsPerPage = 9;
 

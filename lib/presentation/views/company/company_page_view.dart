@@ -5,9 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../viewmodels/company_viewmodel.dart';
+import '../../viewmodels/main_viewmodel.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../../domain/entities/post_entity.dart';
 import '../../../data/models/post_model.dart';
+import '../../widgets/naver_map_widget.dart';
 
 class CompanyPageView extends StatefulWidget {
   final String companyId;
@@ -21,19 +23,43 @@ class CompanyPageView extends StatefulWidget {
   State<CompanyPageView> createState() => _CompanyPageViewState();
 }
 
-class _CompanyPageViewState extends State<CompanyPageView> {
+class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingObserver {
   List<PostEntity> _posts = [];
   bool _isLoadingPosts = false;
   Map<String, dynamic>? _companyData;
+  bool _hasInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CompanyViewModel>().loadCompany(widget.companyId);
-      _loadPosts();
-      _loadCompanyData();
+      _refreshData();
+      _hasInitialized = true;
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 앱이 다시 활성화될 때 데이터 새로고침
+    if (state == AppLifecycleState.resumed && _hasInitialized) {
+      _refreshData();
+    }
+  }
+
+  Future<void> _refreshData() async {
+    await Future.wait([
+      context.read<CompanyViewModel>().loadCompany(widget.companyId),
+      _loadPosts(),
+      _loadCompanyData(),
+    ]);
   }
 
   Future<void> _loadCompanyData() async {
@@ -143,7 +169,6 @@ class _CompanyPageViewState extends State<CompanyPageView> {
                 _buildMainCategories(company),
                 _buildCategoryTabs(),
                 _buildSection('특징', company),
-                _buildSection('오시는 길', company),
                 _buildMap(company),
                 _buildHistory(company),
                 _buildProducts(company),
@@ -165,6 +190,7 @@ class _CompanyPageViewState extends State<CompanyPageView> {
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
         onPressed: () {
+          context.read<MainViewModel>().clearFilters();
           if (context.canPop()) {
             context.pop();
           } else {
@@ -191,8 +217,15 @@ class _CompanyPageViewState extends State<CompanyPageView> {
   }
 
   Widget _buildCompanyHeader(CompanyEntity company) {
-    // 로고 URL 확인 (logo 필드 또는 photos의 첫 번째 이미지)
-    final logoUrl = company.logo ?? (company.photos.isNotEmpty ? company.photos.first : null);
+    // 로고 URL 우선순위: _companyData의 logo > company.logo > company.photos > null
+    String? logoUrl;
+    if (_companyData?['logo'] != null && _companyData!['logo'].toString().isNotEmpty) {
+      logoUrl = _companyData!['logo'].toString();
+    } else if (company.logo != null && company.logo!.isNotEmpty) {
+      logoUrl = company.logo;
+    } else if (company.photos.isNotEmpty) {
+      logoUrl = company.photos.first;
+    }
     
     return Container(
       width: double.infinity,
@@ -277,6 +310,14 @@ class _CompanyPageViewState extends State<CompanyPageView> {
       categories.add(company.subSubcategory!);
     }
 
+    // 기업 이미지 URL 우선순위: _companyData의 photo > company.photos > null
+    String? imageUrl;
+    if (_companyData?['photo'] != null && _companyData!['photo'].toString().isNotEmpty) {
+      imageUrl = _companyData!['photo'].toString();
+    } else if (company.photos.isNotEmpty) {
+      imageUrl = company.photos.first;
+    }
+
     return Container(
       padding: EdgeInsets.all(16.w),
       color: Colors.white,
@@ -292,13 +333,25 @@ class _CompanyPageViewState extends State<CompanyPageView> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8.r),
-              child: company.photos.isNotEmpty
+              child: imageUrl != null && imageUrl.isNotEmpty
                   ? Image.network(
-                      company.photos.first,
+                      imageUrl,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        );
+                      },
                       errorBuilder: (context, error, stackTrace) {
+                        debugPrint('기업 이미지 로드 실패: $imageUrl, 오류: $error');
                         return Container(
                           color: Colors.grey[300],
                           child: Icon(
@@ -439,6 +492,10 @@ class _CompanyPageViewState extends State<CompanyPageView> {
       content = _companyData?['features']?.toString();
     } else if (title == '인사말') {
       content = company.greeting;
+    } else if (title == '오시는 길') {
+      // 오시는 길 섹션은 지도와 함께 표시되므로 여기서는 빈 위젯 반환
+      // 실제 지도는 _buildMap에서 표시됨
+      return const SizedBox.shrink();
     }
 
     if (content == null || content.isEmpty) {
@@ -521,12 +578,25 @@ class _CompanyPageViewState extends State<CompanyPageView> {
       return const SizedBox.shrink();
     }
 
+    // 위도/경도 정보 가져오기
+    final latitude = company.latitude ?? _companyData?['latitude'] as double?;
+    final longitude = company.longitude ?? _companyData?['longitude'] as double?;
+
     return Container(
       color: Colors.white,
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.all(16.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text(
+            '오시는 길',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
+          SizedBox(height: 12.h),
           Text(
             '주소   $fullAddress',
             style: TextStyle(
@@ -535,33 +605,59 @@ class _CompanyPageViewState extends State<CompanyPageView> {
             ),
           ),
           SizedBox(height: 12.h),
-          Container(
-            height: 150.h,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: Image.asset(
-                'assets/images/map_placeholder.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[300],
-                    child: Center(
-                      child: Icon(
-                        Icons.map,
-                        size: 40.sp,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  );
-                },
+          // 지도 위젯 사용 (위도/경도가 있으면)
+          if (latitude != null && longitude != null) ...[
+            Container(
+              height: 200.h,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.r),
+                child: NaverMapWidget(
+                  companies: [company],
+                  onCompanyTapped: (company) {
+                    // 지도에서 기업 클릭 시 처리 (필요시)
+                  },
+                  centerOnCompany: true,
+                  showCurrentLocationMarker: false,
+                ),
               ),
             ),
-          ),
+          ] else ...[
+            // 위도/경도가 없으면 주소만 표시
+            Container(
+              height: 150.h,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: 40.sp,
+                      color: Colors.grey[400],
+                    ),
+                    SizedBox(height: 8.h),
+                    Text(
+                      '지도 정보 없음',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: 16.h),
         ],
       ),

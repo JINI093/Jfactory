@@ -20,6 +20,7 @@ import '../../presentation/views/purchase/ad_purchase_view.dart';
 import '../../presentation/views/inquiry/inquiry_submission_view.dart';
 import '../../presentation/views/admin/admin_main.dart';
 import '../../presentation/viewmodels/auth_viewmodel.dart';
+import '../../domain/entities/user_entity.dart';
 
 class AppRouter {
   static GoRouter createRouter(BuildContext context) {
@@ -331,6 +332,15 @@ class AppRouter {
       GoRoute(
         path: RouteNames.postRegistration,
         name: 'post_registration',
+        redirect: (context, state) {
+          // 일반회원 접근 차단
+          final authViewModel = context.read<AuthViewModel>();
+          final currentUser = authViewModel.currentUser;
+          if (currentUser == null || currentUser.userType == UserType.individual) {
+            return RouteNames.main;
+          }
+          return null;
+        },
         builder: (context, state) => const PostRegistrationView(),
       ),
       GoRoute(

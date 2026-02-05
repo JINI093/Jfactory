@@ -331,6 +331,26 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 회원탈퇴
+  Future<void> deleteAccount() async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      await _authRepository.deleteAccount();
+      
+      _currentUser = null;
+      _status = AuthStatus.unauthenticated;
+    } catch (e) {
+      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     // Clean up any resources

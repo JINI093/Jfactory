@@ -20,6 +20,8 @@ class _AdPurchaseViewState extends State<AdPurchaseView> {
   final InAppPurchaseService _purchaseService = InAppPurchaseService();
   final PurchaseRepositoryImpl _purchaseRepository = PurchaseRepositoryImpl();
   bool _isLoading = false;
+  static const int _adDailyPrice = 3000;
+  static const int _adDurationDays = 1;
 
   @override
   void initState() {
@@ -58,11 +60,11 @@ class _AdPurchaseViewState extends State<AdPurchaseView> {
         userId: currentUser.uid,
         companyId: authViewModel.currentUser?.companyName ?? 'unknown',
         purchaseType: _purchaseService.getAdTypeFromProductId(purchaseDetails.productID),
-        amount: _purchaseService.getAmountFromProductId(purchaseDetails.productID),
+        amount: _adDailyPrice.toDouble(),
         currency: 'KRW',
         status: entities.PurchaseStatus.completed,
         purchaseDate: DateTime.now(),
-        expiryDate: DateTime.now().add(const Duration(days: 30)), // 30 days validity
+        expiryDate: DateTime.now().add(const Duration(days: _adDurationDays)),
         productId: purchaseDetails.productID,
         transactionId: purchaseDetails.purchaseID,
         metadata: {
@@ -217,12 +219,12 @@ class _AdPurchaseViewState extends State<AdPurchaseView> {
       children: [
         _buildAdPackageCard(
           title: '기본 광고',
-          price: '10,000원',
-          duration: '30일',
+          price: '3,000원/일',
+          duration: '1일',
           features: [
             '검색 결과 상단 노출',
             '기본 하이라이트 효과',
-            '30일간 유효',
+            '1일간 유효',
           ],
           productId: InAppPurchaseService.basicAdProductId,
           color: const Color(0xFF1E3A5F),
@@ -230,13 +232,14 @@ class _AdPurchaseViewState extends State<AdPurchaseView> {
         SizedBox(height: 16.h),
         _buildAdPackageCard(
           title: '프리미엄 광고',
-          price: '30,000원',
-          duration: '30일',
+          price: '3,000원/일',
+          duration: '1일',
           features: [
             '최상단 우선 노출',
             '프리미엄 배지 표시',
             '강화된 하이라이트',
             '분석 리포트 제공',
+            '1일간 유효',
           ],
           productId: InAppPurchaseService.premiumAdProductId,
           color: const Color(0xFFFF9800),
@@ -245,14 +248,15 @@ class _AdPurchaseViewState extends State<AdPurchaseView> {
         SizedBox(height: 16.h),
         _buildAdPackageCard(
           title: '추천 광고',
-          price: '50,000원',
-          duration: '30일',
+          price: '3,000원/일',
+          duration: '1일',
           features: [
             '메인 페이지 추천 섹션',
             '특별 배지 및 효과',
             '푸시 알림 포함',
             '상세 분석 리포트',
             '우선 고객 지원',
+            '1일간 유효',
           ],
           productId: InAppPurchaseService.featuredAdProductId,
           color: const Color(0xFFE91E63),

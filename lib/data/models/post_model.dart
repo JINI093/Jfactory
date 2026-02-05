@@ -64,12 +64,26 @@ class PostModel {
   });
 
   factory PostModel.fromJson(Map<String, dynamic> json) {
+    // images 필드 안전하게 파싱
+    List<String> images = [];
+    if (json['images'] != null) {
+      if (json['images'] is List) {
+        images = (json['images'] as List)
+            .map((e) => e?.toString() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList()
+            .cast<String>();
+      } else if (json['images'] is String) {
+        images = [json['images'] as String];
+      }
+    }
+    
     return PostModel(
-      id: json['id'] as String,
-      companyId: json['companyId'] as String,
-      title: json['title'] as String,
-      content: json['content'] as String,
-      images: List<String>.from(json['images'] ?? []),
+      id: json['id'] as String? ?? json['id'].toString(),
+      companyId: json['companyId'] as String? ?? json['companyId'].toString(),
+      title: json['title'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      images: images,
       status: PostStatus.values.firstWhere(
         (e) => e.toString().split('.').last == json['status'],
         orElse: () => PostStatus.draft,
