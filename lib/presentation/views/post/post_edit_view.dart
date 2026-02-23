@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import '../../../domain/entities/post_entity.dart';
 import '../../../domain/repositories/post_repository.dart';
@@ -10,10 +11,12 @@ import '../../../data/models/category_model.dart';
 
 class PostEditView extends StatefulWidget {
   final PostEntity post;
+  final bool allowAdminActions;
 
   const PostEditView({
     super.key,
     required this.post,
+    this.allowAdminActions = false,
   });
 
   @override
@@ -591,6 +594,17 @@ class _PostEditViewState extends State<PostEditView> {
       return;
     }
 
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (!widget.allowAdminActions && (currentUser == null || currentUser.uid != widget.post.companyId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('게시글 수정 권한이 없습니다.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
@@ -651,8 +665,9 @@ class _PostEditViewState extends State<PostEditView> {
         );
 
         // 상세 페이지로 돌아가기
-        Navigator.pop(context);
-        Navigator.pop(context); // 상세 페이지도 닫기
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       if (mounted) {

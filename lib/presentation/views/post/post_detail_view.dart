@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../../../domain/entities/post_entity.dart';
 import '../../../data/models/post_model.dart';
+import '../../../domain/repositories/post_repository.dart';
 import 'post_edit_view.dart';
 
 class PostDetailView extends StatefulWidget {
   final PostEntity? post;
   final String? postId;
+  final bool allowAdminActions;
 
   const PostDetailView({
     super.key,
     this.post,
     this.postId,
+    this.allowAdminActions = false,
   });
 
   @override
@@ -24,6 +29,62 @@ class _PostDetailViewState extends State<PostDetailView> {
   PostEntity? _post;
   bool _isLoading = true;
   String? _errorMessage;
+
+  Future<void> _deletePost(PostEntity post) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('게시글 삭제'),
+          content: const Text('정말 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await context.read<PostRepository>().deletePost(post.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('게시글이 삭제되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('게시글 삭제 중 오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -178,6 +239,8 @@ class _PostDetailViewState extends State<PostDetailView> {
     }
 
     final post = _post!;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final canEdit = widget.allowAdminActions || (currentUser != null && currentUser.uid == post.companyId);
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -209,17 +272,26 @@ class _PostDetailViewState extends State<PostDetailView> {
           },
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PostEditView(post: post),
-                ),
-              );
-            },
-          ),
+          if (canEdit)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostEditView(
+                      post: post,
+                      allowAdminActions: widget.allowAdminActions,
+                    ),
+                  ),
+                );
+              },
+            ),
+          if (canEdit)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () => _deletePost(post),
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -333,7 +405,7 @@ class _PostDetailViewState extends State<PostDetailView> {
                         borderRadius: BorderRadius.circular(8.r),
                         child: Image.network(
                           imageUrl,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           loadingBuilder: (context, child, loadingProgress) {
                             if (loadingProgress == null) {
                               debugPrint('✅ 이미지 로드 완료: $imageUrl');

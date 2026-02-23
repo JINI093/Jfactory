@@ -262,7 +262,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
       child: imageUrl != null && imageUrl.isNotEmpty
           ? Image.network(
               imageUrl,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               width: double.infinity,
               height: 220,
               loadingBuilder: (context, child, loadingProgress) {

@@ -7,6 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
+import '../../../core/services/image_compress_service.dart';
 import '../../../core/router/route_names.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -40,6 +42,7 @@ class _ProfileViewState extends State<ProfileView> {
   bool _isLoadingCompanyData = false;
   String? _companyDataError;
   bool _hasInitialLoadTriggered = false;
+  bool _hasCompanyRefreshAttempted = false;
   bool _isEditMode = false;
   bool _isSaving = false;
   
@@ -193,6 +196,7 @@ class _ProfileViewState extends State<ProfileView> {
     if (_isLoadingCompanyData) {
       return;
     }
+    _hasCompanyRefreshAttempted = true;
     
     setState(() {
       _isLoadingCompanyData = true;
@@ -556,6 +560,7 @@ class _ProfileViewState extends State<ProfileView> {
                   // 재시도 시 상태 초기화
                   setState(() {
                     _hasInitialLoadTriggered = false;
+                    _hasCompanyRefreshAttempted = false;
                   });
                   _loadCompanyData();
                 },
@@ -567,6 +572,18 @@ class _ProfileViewState extends State<ProfileView> {
       );
     }
     
+    if (!_isLoadingCompanyData &&
+        _companyData == null &&
+        _companyDataError == null &&
+        !_hasCompanyRefreshAttempted) {
+      _hasCompanyRefreshAttempted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _loadCompanyData();
+        }
+      });
+    }
+
     // 로딩이 완료되었고 데이터가 없으며 에러도 없을 때만 빈 상태 표시
     if (!_isLoadingCompanyData && _companyData == null && _companyDataError == null) {
       return Center(
@@ -3322,8 +3339,18 @@ class _ProfileViewState extends State<ProfileView> {
 
   Future<String> _uploadImage(File image, String path) async {
     try {
+      final bytes = await ImageCompressService.compressImageBytes(
+        image,
+        minWidth: 1024,
+        minHeight: 1024,
+        quality: 70,
+        maxBytes: 900 * 1024,
+      );
       final ref = FirebaseStorage.instance.ref().child(path);
-      final uploadTask = await ref.putFile(image);
+      final uploadTask = await ref.putData(
+        Uint8List.fromList(bytes),
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
       return await uploadTask.ref.getDownloadURL();
     } catch (e) {
       throw Exception('이미지 업로드 실패: $e');

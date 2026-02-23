@@ -252,6 +252,7 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
 
   @override
   Widget build(BuildContext context) {
+    final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
@@ -269,7 +270,7 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
               ],
             ),
           ),
-          _buildBottomSection(),
+          if (!isKeyboardVisible) _buildBottomSection(),
         ],
       ),
     );

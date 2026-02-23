@@ -31,6 +31,7 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
   bool _isLoading = true;
   bool _mapLoadingError = false;
   String? _mapImageUrl;
+  List<CompanyEntity> _markerCompanies = [];
   
   // 네이버 로그인 API 설정 (Static Map도 동일한 키 사용) - 현재 사용하지 않음
   // static String get _naverClientId => dotenv.env['Naver_client_ID'] ?? '6VBjy8uAYG4OQuVORB0s';
@@ -150,6 +151,7 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       // 회사 마커들 추가 (Google Maps 형식)
       String companyMarkers = '';
       int validCompanyCount = 0;
+      final List<CompanyEntity> markerCompanies = [];
       
       debugPrint('🗺️ [2/4] 전체 회사 수: ${widget.companies.length}');
       
@@ -221,10 +223,11 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
           // 프리미엄 업체와 일반 업체 구분
           final markerColor = company.adPayment > 0 ? 'blue' : 'green';
           final markerSize = company.adPayment > 0 ? 'mid' : 'small';
-          final markerLabel = company.adPayment > 0 ? 'P' : (validCompanyCount + 1).toString();
+          final markerLabel = (validCompanyCount + 1).toString();
           
           companyMarkers += '&markers=color:$markerColor%7Csize:$markerSize%7Clabel:$markerLabel%7C${company.latitude},${company.longitude}';
           validCompanyCount++;
+          markerCompanies.add(company);
           
           debugPrint('🗺️ [2/4] ✅ 마커 추가: ${company.companyName} (${company.latitude}, ${company.longitude}) - ${company.adPayment > 0 ? 'Premium' : 'Regular'}');
         } else {
@@ -232,6 +235,7 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
         }
       }
       
+      _markerCompanies = markerCompanies;
       debugPrint('🗺️ [2/4] 유효한 회사 마커 $validCompanyCount개 추가 완료');
       
       // Google Static Maps API 사용 (더 안정적)
@@ -262,17 +266,20 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
           // 마커를 다시 생성하되 최대 10개로 제한
           String limitedCompanyMarkers = '';
           int limitedCount = 0;
+          final List<CompanyEntity> limitedCompanies = [];
           for (int i = 0; i < companiesToShow.length && i < 10; i++) {
             final company = companiesToShow[i];
             if (company.latitude != null && company.longitude != null) {
               final markerColor = company.adPayment > 0 ? 'blue' : 'green';
               final markerSize = company.adPayment > 0 ? 'mid' : 'small';
-              final markerLabel = company.adPayment > 0 ? 'P' : (limitedCount + 1).toString();
+              final markerLabel = (limitedCount + 1).toString();
               limitedCompanyMarkers += '&markers=color:$markerColor%7Csize:$markerSize%7Clabel:$markerLabel%7C${company.latitude},${company.longitude}';
               limitedCount++;
+              limitedCompanies.add(company);
             }
           }
           companyMarkers = limitedCompanyMarkers;
+          _markerCompanies = limitedCompanies;
           _mapImageUrl = 'https://maps.googleapis.com/maps/api/staticmap'
               '?center=$lat,$lng'
               '&zoom=$zoom'
@@ -536,6 +543,7 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
   Widget _buildLocationInfo() {
     final lat = _currentPosition?.latitude ?? 37.5665;
     final lng = _currentPosition?.longitude ?? 126.9780;
+    final hasMarkers = _markerCompanies.isNotEmpty;
     
     return Positioned(
       bottom: 8.h,
@@ -558,6 +566,25 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            if (hasMarkers) ...[
+              SizedBox(height: 4.h),
+              ..._markerCompanies.asMap().entries.map((entry) {
+                final index = entry.key + 1;
+                final company = entry.value;
+                final name = company.companyName.isNotEmpty
+                    ? company.companyName
+                    : '기업명 없음';
+                final displayName =
+                    name.length > 14 ? '${name.substring(0, 14)}...' : name;
+                return Text(
+                  '$index. $displayName',
+                  style: TextStyle(
+                    fontSize: 9.sp,
+                    color: Colors.white70,
+                  ),
+                );
+              }),
+            ],
             Text(
               '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
               style: TextStyle(

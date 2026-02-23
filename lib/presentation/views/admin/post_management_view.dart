@@ -661,7 +661,10 @@ class _PostManagementViewState extends State<PostManagementView> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => PostDetailView(postId: postId),
+                      builder: (context) => PostDetailView(
+                        postId: postId,
+                        allowAdminActions: true,
+                      ),
                     ),
                   );
                 }

@@ -8,6 +8,8 @@ import '../../../core/router/route_names.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+import '../../../core/services/image_compress_service.dart';
 import '../../../data/models/category_model.dart';
 
 class PhoneNumberFormatter extends TextInputFormatter {
@@ -328,37 +330,35 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
       result.add(
         DropdownMenuItem<String>(
           value: items[i],
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 4.h),
-            child: Text(items[i]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 4.h),
+                child: Text(items[i]),
+              ),
+              if (i < items.length - 1)
+                Container(
+                  height: 2,
+                  margin: EdgeInsets.symmetric(vertical: 0),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.grey[400]!,
+                        width: 1,
+                      ),
+                      bottom: BorderSide(
+                        color: Colors.grey[400]!,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       );
-      // 마지막 항목이 아니면 구분선 추가 (세부업종과 동일한 스타일)
-      if (i < items.length - 1) {
-        result.add(
-          DropdownMenuItem<String>(
-            enabled: false,
-            value: '__category_divider__',
-            child: Container(
-              height: 2,
-              margin: EdgeInsets.symmetric(vertical: 0),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: Colors.grey[400]!,
-                    width: 1,
-                  ),
-                  bottom: BorderSide(
-                    color: Colors.grey[400]!,
-                    width: 1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }
     }
     return result;
   }
@@ -1687,7 +1687,7 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         'photo': photoUrl, // Single photo field that model expects
         'photos': photoUrl != null ? [photoUrl] : [], // List of photos for compatibility
         'adPayment': 0.0,
-        'isVerified': true,
+        'isVerified': false,
         'isPremium': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -1714,6 +1714,7 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
               'companyRegistrationDate': FieldValue.serverTimestamp(),
               'userType': 'company',
               'companyName': companyName,
+              'isApproved': false,
               if (businessLicenseUrl != null && businessLicenseUrl.isNotEmpty)
                 'businessLicenseUrl': businessLicenseUrl,
             }, SetOptions(merge: true));
@@ -1761,8 +1762,18 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
 
   Future<String> _uploadImage(File image, String path) async {
     try {
+      final bytes = await ImageCompressService.compressImageBytes(
+        image,
+        minWidth: 1024,
+        minHeight: 1024,
+        quality: 70,
+        maxBytes: 900 * 1024,
+      );
       final ref = FirebaseStorage.instance.ref().child(path);
-      final uploadTask = await ref.putFile(image);
+      final uploadTask = await ref.putData(
+        Uint8List.fromList(bytes),
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
       return await uploadTask.ref.getDownloadURL();
     } catch (e) {
       throw Exception('이미지 업로드 실패: $e');

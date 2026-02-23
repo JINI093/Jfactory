@@ -258,7 +258,7 @@ class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingOb
                         logoUrl,
                         width: 48.w,
                         height: 48.h,
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
                           // 네트워크 이미지 로드 실패 시 기본 로고 표시
                           return Image.asset(
@@ -338,7 +338,7 @@ class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingOb
                       imageUrl,
                       width: double.infinity,
                       height: double.infinity,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) return child;
                         return Center(
@@ -838,7 +838,7 @@ class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingOb
                               imageUrl,
                               width: double.infinity,
                               height: double.infinity,
-                              fit: BoxFit.cover,
+                              fit: BoxFit.contain,
                               errorBuilder: (context, error, stackTrace) {
                                 return Container(
                                   color: Colors.grey[300],
