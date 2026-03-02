@@ -3,6 +3,7 @@ import UIKit
 import Firebase
 import FirebaseAuth
 import GoogleSignIn
+import GoogleMaps
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -11,6 +12,12 @@ import GoogleSignIn
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     FirebaseApp.configure()
+    if let mapsApiKey = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String,
+       !mapsApiKey.isEmpty {
+      GMSServices.provideAPIKey(mapsApiKey)
+    } else {
+      print("⚠️ GMSApiKey is missing in Info.plist")
+    }
     
     // Configure reCAPTCHA for phone auth
     #if targetEnvironment(simulator)

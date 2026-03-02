@@ -597,16 +597,17 @@ class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingOb
             ),
           ),
           SizedBox(height: 12.h),
-          Text(
-            '주소   $fullAddress',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.black87,
+          if (fullAddress.isNotEmpty) ...[
+            Text(
+              '주소   $fullAddress',
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.black87,
+              ),
             ),
-          ),
-          SizedBox(height: 12.h),
-          // 지도 위젯 사용 (위도/경도가 있으면)
-          if (latitude != null && longitude != null) ...[
+            SizedBox(height: 12.h),
+          ],
+          if ((latitude != null && longitude != null) || fullAddress.isNotEmpty) ...[
             Container(
               height: 200.h,
               width: double.infinity,
@@ -626,39 +627,8 @@ class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingOb
                 ),
               ),
             ),
-          ] else ...[
-            // 위도/경도가 없으면 주소만 표시
-            Container(
-              height: 150.h,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8.r),
-                border: Border.all(color: Colors.grey[300]!),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      size: 40.sp,
-                      color: Colors.grey[400],
-                    ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      '지도 정보 없음',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            SizedBox(height: 16.h),
           ],
-          SizedBox(height: 16.h),
         ],
       ),
     );

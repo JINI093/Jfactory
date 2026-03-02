@@ -13,6 +13,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../widgets/naver_map_widget.dart';
 import '../../widgets/admob_banner_widget.dart';
+import '../../../services/location_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../map/fullscreen_map_view.dart';
+import '../../viewmodels/favorite_viewmodel.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -46,6 +50,7 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
             _searchController.clear();
           }
           viewModel.loadCompanies();
+          context.read<FavoriteViewModel>().loadFavoriteCompanies();
           _checkCompanyRegistration();
           _hasInitialized = true;
           // 초기 경로 저장
@@ -475,18 +480,28 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
               SizedBox(width: 8.w),
               _buildLocationDropdown('지역'),
               const Spacer(),
-              Container(
-                width: 40.w,
-                height: 40.h,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F),
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Icon(
-                  Icons.view_module,
-                  color: Colors.white,
-                  size: 20.sp,
-                ),
+              Consumer<MainViewModel>(
+                builder: (context, mainViewModel, child) {
+                  return GestureDetector(
+                    onTap: () => _openFullscreenMapFromButton(
+                      context,
+                      mainViewModel.companies,
+                    ),
+                    child: Container(
+                      width: 40.w,
+                      height: 40.h,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A5F),
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                      child: Icon(
+                        Icons.view_module,
+                        color: Colors.white,
+                        size: 20.sp,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -579,6 +594,67 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
               color: Colors.grey[600],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFullscreenMapFromButton(
+    BuildContext context,
+    List<CompanyEntity> companies,
+  ) async {
+    if (!mounted) return;
+
+    final limitedCompanies = companies.take(15).toList();
+    final locationService = LocationService();
+    final markerPositions = <String, LatLng>{};
+
+    if (limitedCompanies.isNotEmpty) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return const Center(child: CircularProgressIndicator());
+        },
+      );
+    }
+
+    for (final company in limitedCompanies) {
+      final lat = company.latitude;
+      final lng = company.longitude;
+      if (lat != null && lng != null) {
+        markerPositions[company.id] = LatLng(lat, lng);
+        continue;
+      }
+
+      final addressParts = [
+        company.address.trim(),
+        company.detailAddress.trim(),
+      ].where((part) => part.isNotEmpty).toList();
+
+      if (addressParts.isEmpty) {
+        continue;
+      }
+
+      final resolved =
+          await locationService.getCoordinatesFromAddress(addressParts.join(' '));
+      if (resolved != null) {
+        markerPositions[company.id] =
+            LatLng(resolved.latitude, resolved.longitude);
+      }
+    }
+
+    if (!mounted) return;
+    if (limitedCompanies.isNotEmpty) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullscreenMapView(
+          companies: limitedCompanies,
+          markerCompanies: limitedCompanies,
+          markerPositions: markerPositions,
         ),
       ),
     );
@@ -684,8 +760,13 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                 );
               }
 
-              // 검색어나 카테고리 필터가 있으면 필터링된 기업 표시, 아니면 프리미엄 기업만 필터링
-              final displayCompanies = viewModel.searchQuery.isNotEmpty || viewModel.selectedCategory != null
+              final hasActiveFilters = viewModel.searchQuery.isNotEmpty ||
+                  viewModel.selectedCategory != null ||
+                  viewModel.selectedSubcategory != null ||
+                  viewModel.selectedLocations.isNotEmpty;
+
+              // 검색/필터가 있으면 필터링된 기업 표시, 아니면 프리미엄 기업만 표시
+              final displayCompanies = hasActiveFilters
                   ? viewModel.companies.take(20).toList()
                   : viewModel.companies
                       .where((company) => company.adPayment > 0)
@@ -703,17 +784,13 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                     child: Column(
                       children: [
                         Icon(
-                          viewModel.searchQuery.isNotEmpty 
-                              ? Icons.search_off
-                              : Icons.business_outlined,
+                          hasActiveFilters ? Icons.search_off : Icons.business_outlined,
                           size: 48.sp,
                           color: Colors.grey[400],
                         ),
                         SizedBox(height: 12.h),
                         Text(
-                          viewModel.searchQuery.isNotEmpty
-                              ? '검색 결과가 없습니다.'
-                              : '프리미엄 기업이 없습니다.',
+                          hasActiveFilters ? '해당 기업이 없습니다.' : '프리미엄 기업이 없습니다.',
                           style: TextStyle(
                             fontSize: 14.sp,
                             color: Colors.grey[600],
@@ -722,8 +799,8 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                         ),
                         SizedBox(height: 6.h),
                         Text(
-                          viewModel.searchQuery.isNotEmpty
-                              ? '다른 키워드로 검색해보세요.'
+                          hasActiveFilters
+                              ? '다른 조건으로 검색해보세요.'
                               : '기업광고를 구매하면 메인에 노출됩니다.',
                           style: TextStyle(
                             fontSize: 12.sp,
@@ -748,11 +825,20 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                 itemCount: displayCompanies.length,
                 itemBuilder: (context, index) {
                   final company = displayCompanies[index];
-                  return GestureDetector(
-                    onTap: () {
-                      context.push('/company-page/${company.id}');
+                  return Consumer<FavoriteViewModel>(
+                    builder: (context, favoriteViewModel, child) {
+                      final isFavorite = favoriteViewModel.isFavorite(company.id);
+                      return GestureDetector(
+                        onTap: () {
+                          context.push('/company-page/${company.id}');
+                        },
+                        child: _buildCompanyCard(
+                          company,
+                          isPremium: true,
+                          isFavorite: isFavorite,
+                        ),
+                      );
                     },
-                    child: _buildCompanyCard(company, isPremium: true),
                   );
                 },
               );
@@ -763,7 +849,11 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildCompanyCard(CompanyEntity company, {bool isPremium = false}) {
+  Widget _buildCompanyCard(
+    CompanyEntity company, {
+    bool isPremium = false,
+    bool isFavorite = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -805,8 +895,8 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    Icons.favorite,
-                    color: Colors.red,
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: isFavorite ? Colors.red : Colors.grey[500],
                     size: 18.sp,
                   ),
                 ),

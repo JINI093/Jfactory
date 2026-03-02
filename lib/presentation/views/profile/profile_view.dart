@@ -21,7 +21,6 @@ import '../../../domain/repositories/inquiry_repository.dart';
 import '../../../domain/repositories/post_repository.dart';
 import '../../../domain/repositories/purchase_repository.dart';
 import '../post/post_detail_view.dart';
-import '../post/post_edit_view.dart';
 import '../../../data/models/category_model.dart';
 
 class ProfileView extends StatefulWidget {
@@ -1936,7 +1935,9 @@ class _ProfileViewState extends State<ProfileView> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => PostEditView(post: post),
+                    builder: (context) => PostDetailView(
+                      post: post,
+                    ),
                   ),
                 );
               },

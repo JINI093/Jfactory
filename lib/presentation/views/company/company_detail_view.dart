@@ -3,12 +3,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart';
 import '../../viewmodels/company_viewmodel.dart';
 import '../../viewmodels/favorite_viewmodel.dart';
 import '../../viewmodels/main_viewmodel.dart';
 import '../../widgets/naver_map_widget.dart';
-import '../../../services/location_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../../domain/entities/post_entity.dart';
@@ -29,7 +27,6 @@ class CompanyDetailView extends StatefulWidget {
 class _CompanyDetailViewState extends State<CompanyDetailView> {
   List<PostEntity> _posts = [];
   bool _isLoadingPosts = false;
-  final LocationService _locationService = LocationService();
 
   @override
   void initState() {
@@ -39,6 +36,15 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
       context.read<FavoriteViewModel>().loadFavoriteCompanies();
       _loadPosts();
     });
+  }
+
+  @override
+  void dispose() {
+    // 시스템 뒤로가기/제스처로 나가도 검색 조건 초기화
+    try {
+      context.read<MainViewModel>().clearFilters();
+    } catch (_) {}
+    super.dispose();
   }
 
   Future<void> _loadPosts() async {
@@ -454,8 +460,10 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
     final fullAddress = detailAddress.isNotEmpty ? '$address $detailAddress' : address;
     final latitude = company.latitude;
     final longitude = company.longitude;
+    final hasLocationInfo =
+        (latitude != null && longitude != null) || fullAddress.isNotEmpty;
 
-    if (fullAddress.isEmpty) {
+    if (!hasLocationInfo) {
       return const SizedBox.shrink();
     }
 
@@ -470,39 +478,22 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('주소  ', style: TextStyle(fontSize: 14, color: Colors.black87)),
-              Expanded(
-                child: Text(
-                  fullAddress,
-                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+          if (fullAddress.isNotEmpty) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('주소  ', style: TextStyle(fontSize: 14, color: Colors.black87)),
+                Expanded(
+                  child: Text(
+                    fullAddress,
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (latitude != null && longitude != null)
-            _buildMapContainer(company)
-          else
-            FutureBuilder<Position?>(
-              future: _locationService.getCoordinatesFromAddress(fullAddress),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return _buildMapLoading();
-                }
-                final position = snapshot.data;
-                if (position != null) {
-                  final mappedCompany = company.copyWith(
-                    latitude: position.latitude,
-                    longitude: position.longitude,
-                  );
-                  return _buildMapContainer(mappedCompany);
-                }
-                return _buildMapUnavailable();
-              },
+              ],
             ),
+            const SizedBox(height: 12),
+          ],
+          _buildMapContainer(company),
         ],
       ),
     );
@@ -524,35 +515,6 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
           centerOnCompany: true,
           showCurrentLocationMarker: false,
         ),
-      ),
-    );
-  }
-
-  Widget _buildMapLoading() {
-    return Container(
-      height: 180,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-  }
-
-  Widget _buildMapUnavailable() {
-    return Container(
-      height: 150,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Center(
-        child: Icon(Icons.location_on, size: 40, color: Colors.grey[500]),
       ),
     );
   }

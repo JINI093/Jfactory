@@ -22,7 +22,14 @@ class MainViewModel extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   
-  List<CompanyEntity> get companies => _filteredCompanies.isNotEmpty ? _filteredCompanies : _companies;
+  bool get _hasActiveFilters =>
+      _searchQuery.isNotEmpty ||
+      _selectedCategory != null ||
+      _selectedSubcategory != null ||
+      _selectedLocations.isNotEmpty;
+
+  List<CompanyEntity> get companies =>
+      _hasActiveFilters ? _filteredCompanies : _companies;
   List<Map<String, String>> get selectedLocations => _selectedLocations;
   String? get selectedCategory => _selectedCategory;
   String? get selectedSubcategory => _selectedSubcategory;

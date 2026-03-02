@@ -13,12 +13,14 @@ class PostDetailView extends StatefulWidget {
   final PostEntity? post;
   final String? postId;
   final bool allowAdminActions;
+  final bool readOnly;
 
   const PostDetailView({
     super.key,
     this.post,
     this.postId,
     this.allowAdminActions = false,
+    this.readOnly = false,
   });
 
   @override
@@ -240,7 +242,8 @@ class _PostDetailViewState extends State<PostDetailView> {
 
     final post = _post!;
     final currentUser = FirebaseAuth.instance.currentUser;
-    final canEdit = widget.allowAdminActions || (currentUser != null && currentUser.uid == post.companyId);
+    final canEdit = !widget.readOnly &&
+        (widget.allowAdminActions || (currentUser != null && currentUser.uid == post.companyId));
     return Scaffold(
       appBar: AppBar(
         title: Text(
