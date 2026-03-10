@@ -41,6 +41,10 @@ class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingOb
 
   @override
   void dispose() {
+    // 시스템 뒤로가기/제스처로 나가도 검색 조건 초기화
+    try {
+      context.read<MainViewModel>().clearFilters();
+    } catch (_) {}
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

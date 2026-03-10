@@ -19,14 +19,36 @@ class MainViewModel extends ChangeNotifier {
   String? _selectedCategory;
   String? _selectedSubcategory;
   String _searchQuery = '';
+  bool _showAllCompanies = false;
   bool _isLoading = false;
   String? _error;
+
+  String _normalizeText(String text) {
+    return text
+        .replaceAll('*', '')
+        .replaceAll('\n', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .toLowerCase();
+  }
+
+  String _normalizeCategoryKey(String text) {
+    final normalized = _normalizeText(text);
+    if (normalized.contains('mall')) {
+      return 'mall';
+    }
+    if (normalized.contains('기계 제작')) {
+      return normalized.replaceAll('기계 제작', '기계제작');
+    }
+    return normalized;
+  }
   
   bool get _hasActiveFilters =>
       _searchQuery.isNotEmpty ||
       _selectedCategory != null ||
       _selectedSubcategory != null ||
-      _selectedLocations.isNotEmpty;
+      _selectedLocations.isNotEmpty ||
+      _showAllCompanies;
 
   List<CompanyEntity> get companies =>
       _hasActiveFilters ? _filteredCompanies : _companies;
@@ -34,6 +56,7 @@ class MainViewModel extends ChangeNotifier {
   String? get selectedCategory => _selectedCategory;
   String? get selectedSubcategory => _selectedSubcategory;
   String get searchQuery => _searchQuery;
+  bool get showAllCompanies => _showAllCompanies;
   bool get isLoading => _isLoading;
   String? get error => _error;
   
@@ -43,66 +66,79 @@ class MainViewModel extends ChangeNotifier {
     String? subcategory,
     List<Map<String, String>>? locations,
   }) {
+    bool isMachineManufacturingAll(String value) {
+      final normalized = _normalizeText(value);
+      return normalized.contains('기계제작') && normalized.contains('전체');
+    }
+
+    bool isMachineManufacturingRelated(String value) {
+      final normalizedCompany = _normalizeText(value);
+      if (normalizedCompany.contains('mall')) {
+        return false;
+      }
+      if (normalizedCompany.contains('기계제작') || normalizedCompany.contains('기계 제작')) {
+        return true;
+      }
+      final normalizedSet = _machineRelatedCategoryTitles
+          .map((title) => _normalizeText(title))
+          .toSet();
+      return normalizedSet.any((title) => normalizedCompany.contains(title));
+    }
+
     return _companies.where((company) {
       // 카테고리 필터 적용
       if (category != null && category.isNotEmpty) {
-        String normalize(String text) {
-          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-        }
-        
-        final normalizedCompany = normalize(company.category);
-        final normalizedSelected = normalize(category);
-        
-        if (normalizedCompany != normalizedSelected) {
-          return false;
+        if (isMachineManufacturingAll(category)) {
+          if (!isMachineManufacturingRelated(company.category)) {
+            return false;
+          }
+        } else {
+          final normalizedCompany = _normalizeCategoryKey(company.category);
+          final normalizedSelected = _normalizeCategoryKey(category);
+          if (normalizedCompany != normalizedSelected) {
+            return false;
+          }
         }
       }
-      
+
       // 세부카테고리 필터 적용
-      if (subcategory != null && subcategory.isNotEmpty && 
-          subcategory != '전체') {
-        // "전체 하위카테고리" 선택 시 해당 카테고리의 모든 하위 카테고리 포함
+      if (subcategory != null &&
+          subcategory.isNotEmpty &&
+          subcategory != '전체' &&
+          subcategory != '전체 하위카테고리') {
         if (subcategory == '전체 하위카테고리') {
-          // 메인 카테고리만 필터링 (모든 하위 카테고리 포함)
-          // 이미 위에서 카테고리 필터가 적용되었으므로 여기서는 추가 필터링 불필요
+          // 이미 카테고리 필터가 적용되었으므로 추가 필터링 불필요
         } else {
-          // 특정 세부카테고리 선택 시
-          String normalize(String text) {
-            return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-          }
-          
-          final normalizedCompany = normalize(company.subcategory);
-          final normalizedSelected = normalize(subcategory);
-          
-          // 정확한 매칭 또는 포함 관계 확인
-          if (normalizedCompany != normalizedSelected && 
+          final normalizedCompany = _normalizeText(company.subcategory);
+          final normalizedSelected = _normalizeText(subcategory);
+          if (normalizedCompany != normalizedSelected &&
               !normalizedCompany.contains(normalizedSelected) &&
               !normalizedSelected.contains(normalizedCompany)) {
             return false;
           }
         }
       }
-      
+
       // 지역 필터 적용
       if (locations != null && locations.isNotEmpty) {
         final companyAddress = company.address;
         final matchesLocation = locations.any((location) {
           final selectedRegion = location['region'];
           final selectedDistrict = location['district'];
-          
+
           if (selectedRegion == null) return false;
-          
+
           if (selectedDistrict == '전체' || selectedDistrict == '전지역') {
             return companyAddress.contains(selectedRegion);
           }
-          
-          return companyAddress.contains(selectedRegion) && 
-                 (selectedDistrict == null || companyAddress.contains(selectedDistrict));
+
+          return companyAddress.contains(selectedRegion) &&
+              (selectedDistrict == null || companyAddress.contains(selectedDistrict));
         });
-        
+
         if (!matchesLocation) return false;
       }
-      
+
       return true;
     }).length;
   }
@@ -144,7 +180,11 @@ class MainViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateCategoryFilter(String? category, String? subcategory) {
+  void updateCategoryFilter(
+    String? category,
+    String? subcategory, {
+    bool showAll = false,
+  }) {
     _selectedCategory = category;
     if (subcategory == null ||
         subcategory == '전체' ||
@@ -153,6 +193,7 @@ class MainViewModel extends ChangeNotifier {
     } else {
       _selectedSubcategory = subcategory;
     }
+    _showAllCompanies = showAll;
     _applyAllFilters();
     notifyListeners();
   }
@@ -162,6 +203,7 @@ class MainViewModel extends ChangeNotifier {
     _selectedCategory = null;
     _selectedSubcategory = null;
     _searchQuery = '';
+    _showAllCompanies = false;
     _applyAllFilters();
     notifyListeners();
   }
@@ -179,17 +221,13 @@ class MainViewModel extends ChangeNotifier {
     _filteredCompanies = _companies.where((company) {
       // 카테고리 필터 적용
       if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
-        String normalize(String text) {
-          return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-        }
-        
         bool isMachineManufacturingAll(String category) {
-          final normalized = normalize(category);
+          final normalized = _normalizeText(category);
           return normalized.contains('기계제작') && normalized.contains('전체');
         }
         
         bool isMachineManufacturingRelated(String category) {
-          final normalizedCompany = normalize(category);
+          final normalizedCompany = _normalizeText(category);
           if (normalizedCompany.contains('mall')) {
             return false;
           }
@@ -197,13 +235,13 @@ class MainViewModel extends ChangeNotifier {
             return true;
           }
           final normalizedSet = _machineRelatedCategoryTitles
-              .map((title) => normalize(title))
+              .map((title) => _normalizeText(title))
               .toSet();
           return normalizedSet.any((title) => normalizedCompany.contains(title));
         }
         
-        final normalizedCompany = normalize(company.category);
-        final normalizedSelected = normalize(_selectedCategory!);
+        final normalizedCompany = _normalizeCategoryKey(company.category);
+        final normalizedSelected = _normalizeCategoryKey(_selectedCategory!);
         
         // "기계제작(전체)" 선택 시 관련 카테고리 전체 포함 (MALL 제외)
         if (isMachineManufacturingAll(_selectedCategory!)) {
@@ -229,12 +267,8 @@ class MainViewModel extends ChangeNotifier {
           // 이미 위에서 카테고리 필터가 적용되었으므로 여기서는 추가 필터링 불필요
         } else {
           // 특정 세부카테고리 선택 시
-          String normalize(String text) {
-            return text.replaceAll('\n', ' ').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-          }
-          
-          final normalizedCompany = normalize(company.subcategory);
-          final normalizedSelected = normalize(_selectedSubcategory!);
+          final normalizedCompany = _normalizeText(company.subcategory);
+          final normalizedSelected = _normalizeText(_selectedSubcategory!);
           
           // 정확한 매칭 또는 포함 관계 확인
           if (normalizedCompany != normalizedSelected && 

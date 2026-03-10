@@ -257,6 +257,19 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openCompanyDetail(String route) async {
+    await context.push(route);
+    if (!mounted) return;
+    final viewModel = context.read<MainViewModel>();
+    if (viewModel.searchQuery.isNotEmpty ||
+        viewModel.selectedCategory != null ||
+        viewModel.selectedSubcategory != null ||
+        viewModel.selectedLocations.isNotEmpty) {
+      viewModel.clearFilters();
+    }
+    _searchController.clear();
+  }
+
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
@@ -512,7 +525,7 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                 companies: mainViewModel.companies,
                 onCompanyTapped: (company) {
                   // 회사 상세 페이지로 이동
-                  context.push('/company/${company.id}');
+                  _openCompanyDetail('/company/${company.id}');
                 },
               );
             },
@@ -678,11 +691,13 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                     children: [
                       Expanded(
                         child: Text(
-                          viewModel.searchQuery.isNotEmpty 
+                          viewModel.searchQuery.isNotEmpty
                               ? '검색 결과'
-                              : viewModel.selectedCategory != null
-                                  ? '${viewModel.selectedCategory} 기업'
-                                  : '프리미엄 기업',
+                              : viewModel.showAllCompanies
+                                  ? '전체보기'
+                                  : viewModel.selectedCategory != null
+                                      ? '${viewModel.selectedCategory} 기업'
+                                      : '프리미엄 기업',
                           style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.bold,
@@ -690,7 +705,10 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
-                      if (viewModel.selectedCategory != null || viewModel.searchQuery.isNotEmpty)
+                      if (viewModel.selectedCategory != null ||
+                          viewModel.searchQuery.isNotEmpty ||
+                          viewModel.selectedLocations.isNotEmpty ||
+                          viewModel.showAllCompanies)
                         GestureDetector(
                           onTap: () {
                             viewModel.clearFilters();
@@ -763,7 +781,8 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
               final hasActiveFilters = viewModel.searchQuery.isNotEmpty ||
                   viewModel.selectedCategory != null ||
                   viewModel.selectedSubcategory != null ||
-                  viewModel.selectedLocations.isNotEmpty;
+                  viewModel.selectedLocations.isNotEmpty ||
+                  viewModel.showAllCompanies;
 
               // 검색/필터가 있으면 필터링된 기업 표시, 아니면 프리미엄 기업만 표시
               final displayCompanies = hasActiveFilters
@@ -830,7 +849,7 @@ class _MainViewState extends State<MainView> with WidgetsBindingObserver {
                       final isFavorite = favoriteViewModel.isFavorite(company.id);
                       return GestureDetector(
                         onTap: () {
-                          context.push('/company-page/${company.id}');
+                          _openCompanyDetail('/company-page/${company.id}');
                         },
                         child: _buildCompanyCard(
                           company,

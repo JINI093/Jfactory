@@ -167,8 +167,12 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
 
   Future<void> _generateMapImageUrl() async {
     try {
-      final lat = _currentPosition?.latitude ?? 37.5665;
-      final lng = _currentPosition?.longitude ?? 126.9780;
+      Position? centerPosition;
+      if (widget.centerOnCompany && widget.companies.isNotEmpty) {
+        centerPosition = await _resolveCompanyPosition(widget.companies.first);
+      }
+      final lat = centerPosition?.latitude ?? _currentPosition?.latitude ?? 37.5665;
+      final lng = centerPosition?.longitude ?? _currentPosition?.longitude ?? 126.9780;
       
       debugPrint('🗺️ [2/4] 위치 정보: lat=$lat, lng=$lng');
       
