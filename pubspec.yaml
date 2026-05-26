@@ -32,7 +32,7 @@ dependencies:
   # Social Login
   google_sign_in: ^6.1.6
   kakao_flutter_sdk_user: ^1.9.5
-  flutter_naver_login: ^2.1.1
+  flutter_naver_login: ^2.0.0
   sign_in_with_apple: ^6.1.2
   
   # Navigation
@@ -53,6 +53,8 @@ dependencies:
   flutter_dotenv: ^5.1.0
   http: ^1.1.0
   url_launcher: ^6.2.4
+  flutter_image_compress: ^2.3.0
+  path_provider: ^2.1.4
   
   # Ads
   google_mobile_ads: ^5.1.0

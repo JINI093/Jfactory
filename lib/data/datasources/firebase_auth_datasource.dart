@@ -5,6 +5,7 @@ import 'package:flutter_naver_login/flutter_naver_login.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import '../models/user_model.dart';
 import '../../domain/entities/user_entity.dart';
@@ -205,6 +206,21 @@ class FirebaseAuthDataSourceImpl implements FirebaseAuthDataSource {
   Future<UserModel> signInWithNaver() async {
     try {
       print('🔥 Starting Naver login process...');
+
+      // Naver login config logging (keep in sync with Android strings.xml / iOS Info.plist)
+      final clientId = Platform.isAndroid
+          ? '6VBjy8uAYG4OQuVORB0s'
+          : Platform.isIOS
+              ? '6VBjy8uAYG4OQuVORB0s'
+              : 'unknown';
+      final scheme = Platform.isAndroid
+          ? 'vendor.app'
+          : Platform.isIOS
+              ? 'naverlogin'
+              : 'unknown';
+      final redirectUri = '$scheme://oauth';
+      print('Client ID: $clientId');
+      print('Redirect URI: $redirectUri');
       
       // Authenticate with Naver
       var result = await FlutterNaverLogin.logIn();
@@ -213,7 +229,17 @@ class FirebaseAuthDataSourceImpl implements FirebaseAuthDataSource {
       // Check if login was successful
       if (result.account == null) {
         print('🔥 Naver account is null - login was cancelled or failed');
-        throw Exception('네이버 로그인이 취소되었습니다.');
+        final errorMsg = result.errorMessage ?? '서비스설정에 오류가 있습니다';
+        print('🔥 Naver login error message: $errorMsg');
+        
+        // Provide more helpful error message
+        if (errorMsg.contains('서비스설정') || errorMsg.contains('오류')) {
+          throw Exception('네이버 로그인 설정 오류: 네이버 개발자 센터에서 앱 설정을 확인해주세요.\n(패키지명/Bundle ID, 서비스 URL, Client ID/Secret 확인 필요)');
+        } else if (errorMsg.contains('취소') || errorMsg.contains('cancel')) {
+          throw Exception('네이버 로그인이 취소되었습니다.');
+        } else {
+          throw Exception('네이버 로그인에 실패했습니다: $errorMsg');
+        }
       }
 
       // Get user information from result

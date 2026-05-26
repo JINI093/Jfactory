@@ -365,12 +365,11 @@ class _InquiryManagementViewState extends State<InquiryManagementView> {
     final status = inquiryData['status'] ?? 'pending';
     final title = inquiryData['title'] ?? '제목 없음';
     final createdAt = _formatDate(inquiryData['createdAt']);
-    final companyName = _getCompanyName(userId);
     
     return TableRow(
       children: [
         _buildCell('$index'),
-        _buildCell(companyName),
+        _buildCompanyNameCell(userId),
         _buildCell(
           status == 'answered' ? '답변완료' : '답변대기',
           color: status == 'answered' ? Colors.green : Colors.orange,
@@ -419,10 +418,60 @@ class _InquiryManagementViewState extends State<InquiryManagementView> {
     );
   }
 
-  String _getCompanyName(String userId) {
-    // TODO: Firestore에서 userId로 기업명 조회
-    // 임시로 '업체명' 반환
-    return '업체명';
+  Widget _buildCompanyNameCell(String userId) {
+    if (userId.isEmpty) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+        child: Text(
+          '-',
+          style: TextStyle(
+            fontSize: _responsiveFontSize(12),
+            color: Colors.black87,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+      child: FutureBuilder<DocumentSnapshot>(
+        future: _firestore.collection('users').doc(userId).get(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Text(
+              '로딩 중...',
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                color: Colors.grey[600],
+              ),
+            );
+          }
+
+          if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
+            return Text(
+              userId, // 기업명을 찾을 수 없으면 userId 표시
+              style: TextStyle(
+                fontSize: _responsiveFontSize(12),
+                color: Colors.grey[600],
+              ),
+            );
+          }
+
+          final userData = snapshot.data!.data() as Map<String, dynamic>;
+          final companyName = userData['companyName'] ?? 
+                             userData['name'] ?? 
+                             userId;
+          
+          return Text(
+            companyName,
+            style: TextStyle(
+              fontSize: _responsiveFontSize(12),
+              color: Colors.black87,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   String _formatDate(dynamic dateValue) {

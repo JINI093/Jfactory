@@ -80,7 +80,7 @@ class ProcessPaymentParams {
     return ProcessPaymentParams(
       userId: userId,
       companyId: companyId,
-      amount: 30000, // 기본 광고비 3만원
+      amount: 3000, // 기본 광고비 1일 3천원
       paymentMethod: paymentMethod,
       adDurationDays: 30, // 30일
     );

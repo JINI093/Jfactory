@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../viewmodels/company_viewmodel.dart';
+import '../../viewmodels/main_viewmodel.dart';
+import '../../../domain/entities/company_entity.dart';
+import '../../../domain/entities/post_entity.dart';
+import '../../../data/models/post_model.dart';
+import '../../widgets/naver_map_widget.dart';
 
 class CompanyPageView extends StatefulWidget {
   final String companyId;
@@ -14,30 +23,164 @@ class CompanyPageView extends StatefulWidget {
   State<CompanyPageView> createState() => _CompanyPageViewState();
 }
 
-class _CompanyPageViewState extends State<CompanyPageView> {
+class _CompanyPageViewState extends State<CompanyPageView> with WidgetsBindingObserver {
+  List<PostEntity> _posts = [];
+  bool _isLoadingPosts = false;
+  Map<String, dynamic>? _companyData;
+  bool _hasInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshData();
+      _hasInitialized = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    // 시스템 뒤로가기/제스처로 나가도 검색 조건 초기화
+    try {
+      context.read<MainViewModel>().clearFilters();
+    } catch (_) {}
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 앱이 다시 활성화될 때 데이터 새로고침
+    if (state == AppLifecycleState.resumed && _hasInitialized) {
+      _refreshData();
+    }
+  }
+
+  Future<void> _refreshData() async {
+    await Future.wait([
+      context.read<CompanyViewModel>().loadCompany(widget.companyId),
+      _loadPosts(),
+      _loadCompanyData(),
+    ]);
+  }
+
+  Future<void> _loadCompanyData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('companies')
+          .doc(widget.companyId)
+          .get();
+      
+      if (doc.exists) {
+        setState(() {
+          _companyData = doc.data();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading company data: $e');
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    setState(() {
+      _isLoadingPosts = true;
+    });
+
+    try {
+      QuerySnapshot snapshot;
+      try {
+        snapshot = await FirebaseFirestore.instance
+            .collection('posts')
+            .where('companyId', isEqualTo: widget.companyId)
+            .where('status', isEqualTo: 'published')
+            .orderBy('createdAt', descending: true)
+            .get();
+      } catch (e) {
+        // 인덱스 오류 시 orderBy 없이 조회
+        snapshot = await FirebaseFirestore.instance
+            .collection('posts')
+            .where('companyId', isEqualTo: widget.companyId)
+            .where('status', isEqualTo: 'published')
+            .get();
+      }
+
+      final posts = snapshot.docs.map((doc) {
+        try {
+          final data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id;
+          return PostModel.fromJson(data).toEntity();
+        } catch (e) {
+          return null;
+        }
+      }).where((post) => post != null).cast<PostEntity>().toList();
+
+      // 클라이언트에서 정렬
+      posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      setState(() {
+        _posts = posts;
+        _isLoadingPosts = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingPosts = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildCompanyHeader(),
-            _buildCompanyImage(),
-            _buildMainCategories(),
-            _buildCategoryTabs(),
-            _buildSection('특징'),
-            _buildSection('오시는 길'),
-            _buildMap(),
-            _buildHistory(),
-            _buildSection('인사말'),
-            _buildProducts(),
-            SizedBox(height: 80.h),
-          ],
-        ),
+      body: Consumer<CompanyViewModel>(
+        builder: (context, viewModel, child) {
+          if (viewModel.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (viewModel.error != null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(viewModel.error!),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => viewModel.loadCompany(widget.companyId),
+                    child: const Text('다시 시도'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final company = viewModel.selectedCompany;
+          if (company == null) {
+            return const Center(child: Text('기업 정보를 찾을 수 없습니다.'));
+          }
+
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildCompanyHeader(company),
+                _buildCompanyImage(company),
+                _buildMainCategories(company),
+                _buildCategoryTabs(),
+                _buildSection('특징', company),
+                _buildMap(company),
+                _buildHistory(company),
+                _buildProducts(company),
+                SizedBox(height: 80.h),
+              ],
+            ),
+          );
+        },
       ),
       bottomNavigationBar: _buildBottomButtons(),
     );
@@ -51,6 +194,7 @@ class _CompanyPageViewState extends State<CompanyPageView> {
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
         onPressed: () {
+          context.read<MainViewModel>().clearFilters();
           if (context.canPop()) {
             context.pop();
           } else {
@@ -76,56 +220,108 @@ class _CompanyPageViewState extends State<CompanyPageView> {
     );
   }
 
-  Widget _buildCompanyHeader() {
+  Widget _buildCompanyHeader(CompanyEntity company) {
+    // 로고 URL 우선순위: _companyData의 logo > company.logo > company.photos > null
+    String? logoUrl;
+    if (_companyData?['logo'] != null && _companyData!['logo'].toString().isNotEmpty) {
+      logoUrl = _companyData!['logo'].toString();
+    } else if (company.logo != null && company.logo!.isNotEmpty) {
+      logoUrl = company.logo;
+    } else if (company.photos.isNotEmpty) {
+      logoUrl = company.photos.first;
+    }
+    
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(16.w),
       color: Colors.white,
-      child: Center(
-        child: Container(
-          padding: EdgeInsets.all(16.w),
-          decoration: BoxDecoration(
-            color: const Color(0xFFDFEBFF),
-            borderRadius: BorderRadius.circular(8.r),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 48.w,
-                height: 48.h,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F),
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Center(
-                  child: Text(
-                    'J',
-                    style: TextStyle(
-                      fontSize: 24.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+      child: Container(
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDFEBFF),
+          borderRadius: BorderRadius.circular(8.r),
+        ),
+        child: Row(
+          children: [
+            // 로고 이미지
+            Container(
+              width: 48.w,
+              height: 48.h,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(
+                  color: Colors.grey[300]!,
+                  width: 1,
                 ),
               ),
-              SizedBox(width: 12.w),
-              Text(
-                '김기업123',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.r),
+                child: logoUrl != null && logoUrl.isNotEmpty
+                    ? Image.network(
+                        logoUrl,
+                        width: 48.w,
+                        height: 48.h,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          // 네트워크 이미지 로드 실패 시 기본 로고 표시
+                          return Image.asset(
+                            'assets/icons/logo.png',
+                            width: 48.w,
+                            height: 48.h,
+                            fit: BoxFit.contain,
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        'assets/icons/logo.png',
+                        width: 48.w,
+                        height: 48.h,
+                        fit: BoxFit.contain,
+                      ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            // 기업명 (가로 길이 꽉 차게)
+            Expanded(
+              child: Text(
+                company.companyName.isNotEmpty ? company.companyName : '기업명 없음',
                 style: TextStyle(
                   fontSize: 18.sp,
                   fontWeight: FontWeight.bold,
                   color: Colors.black,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildCompanyImage() {
+  Widget _buildCompanyImage(CompanyEntity company) {
+    // 실제 카테고리 데이터 수집
+    final List<String> categories = [];
+    if (company.category.isNotEmpty) {
+      categories.add(company.category);
+    }
+    if (company.subcategory.isNotEmpty) {
+      categories.add(company.subcategory);
+    }
+    if (company.subSubcategory != null && company.subSubcategory!.isNotEmpty) {
+      categories.add(company.subSubcategory!);
+    }
+
+    // 기업 이미지 URL 우선순위: _companyData의 photo > company.photos > null
+    String? imageUrl;
+    if (_companyData?['photo'] != null && _companyData!['photo'].toString().isNotEmpty) {
+      imageUrl = _companyData!['photo'].toString();
+    } else if (company.photos.isNotEmpty) {
+      imageUrl = company.photos.first;
+    }
+
     return Container(
       padding: EdgeInsets.all(16.w),
       color: Colors.white,
@@ -141,36 +337,64 @@ class _CompanyPageViewState extends State<CompanyPageView> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8.r),
-              child: Image.asset(
-                'assets/images/sample.png',
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[300],
-                    child: Icon(
-                      Icons.business,
-                      size: 40.sp,
-                      color: Colors.grey[500],
+              child: imageUrl != null && imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        debugPrint('기업 이미지 로드 실패: $imageUrl, 오류: $error');
+                        return Container(
+                          color: Colors.grey[300],
+                          child: Icon(
+                            Icons.business,
+                            size: 40.sp,
+                            color: Colors.grey[500],
+                          ),
+                        );
+                      },
+                    )
+                  : Container(
+                      color: Colors.grey[300],
+                      child: Icon(
+                        Icons.business,
+                        size: 40.sp,
+                        color: Colors.grey[500],
+                      ),
                     ),
-                  );
-                },
-              ),
             ),
           ),
           SizedBox(width: 16.w),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCategoryTag('카테고리 - 하위카테고리'),
-                SizedBox(height: 8.h),
-                _buildCategoryTag('카테고리 - 하위카테고리'),
-                SizedBox(height: 8.h),
-                _buildCategoryTag('카테고리 - 하위카테고리'),
-              ],
-            ),
+            child: categories.isEmpty
+                ? Text(
+                    '카테고리 정보 없음',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: Colors.grey[500],
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: categories
+                        .map((category) => Padding(
+                              padding: EdgeInsets.only(bottom: 8.h),
+                              child: _buildCategoryTag(category),
+                            ))
+                        .toList(),
+                  ),
           ),
         ],
       ),
@@ -194,7 +418,18 @@ class _CompanyPageViewState extends State<CompanyPageView> {
     );
   }
 
-  Widget _buildMainCategories() {
+  Widget _buildMainCategories(CompanyEntity company) {
+    // Firestore에서 clients 데이터 가져오기
+    final clients = _companyData?['clients'] as List<dynamic>? ?? [];
+    final clientNames = clients
+        .map((client) => client['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+
+    if (clientNames.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       color: Colors.white,
       padding: EdgeInsets.all(16.w),
@@ -210,20 +445,16 @@ class _CompanyPageViewState extends State<CompanyPageView> {
             ),
           ),
           SizedBox(height: 16.h),
-          Row(
-            children: [
-              Expanded(
-                child: _buildPartnerCard('네이버 기업'),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildPartnerCard('카톡기업'),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildPartnerCard('쿠팡'),
-              ),
-            ],
+          Wrap(
+            spacing: 12.w,
+            runSpacing: 12.h,
+            children: clientNames
+                .take(6) // 최대 6개만 표시
+                .map((name) => SizedBox(
+                      width: (MediaQuery.of(context).size.width - 48.w - 24.w) / 3,
+                      child: _buildPartnerCard(name),
+                    ))
+                .toList(),
           ),
         ],
       ),
@@ -258,7 +489,23 @@ class _CompanyPageViewState extends State<CompanyPageView> {
     return Container();
   }
 
-  Widget _buildSection(String title) {
+  Widget _buildSection(String title, CompanyEntity company) {
+    String? content;
+    
+    if (title == '특징') {
+      content = _companyData?['features']?.toString();
+    } else if (title == '인사말') {
+      content = company.greeting;
+    } else if (title == '오시는 길') {
+      // 오시는 길 섹션은 지도와 함께 표시되므로 여기서는 빈 위젯 반환
+      // 실제 지도는 _buildMap에서 표시됨
+      return const SizedBox.shrink();
+    }
+
+    if (content == null || content.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       color: Colors.white,
       padding: EdgeInsets.all(16.w),
@@ -275,9 +522,31 @@ class _CompanyPageViewState extends State<CompanyPageView> {
           ),
           SizedBox(height: 12.h),
           if (title == '특징') ...[
-            _buildFeatureItem('• 전설 산업 참여 보유'),
-            _buildFeatureItem('• 시설 향비'),
-            _buildFeatureItem('• 헙력업체 경험 다수 보유'),
+            // 특징은 줄바꿈으로 구분된 항목들로 표시
+            ...content.split('\n')
+                .where((line) => line.trim().isNotEmpty)
+                .map((line) => _buildFeatureItem('• ${line.trim()}')),
+          ] else if (title == '인사말') ...[
+            Text(
+              content,
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: Colors.black87,
+                height: 1.5,
+              ),
+            ),
+            if (_companyData?['ceoName'] != null) ...[
+              SizedBox(height: 16.h),
+              Text(
+                '${_companyData!['ceoName']}  대표이사',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
         ],
       ),
@@ -297,55 +566,26 @@ class _CompanyPageViewState extends State<CompanyPageView> {
     );
   }
 
-  Widget _buildMap() {
-    return Container(
-      color: Colors.white,
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '주소   서울시 강남구 대치2동 삼육구 빌딩 (12931)',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 12.h),
-          Container(
-            height: 150.h,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8.r),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: Image.asset(
-                'assets/images/map_placeholder.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[300],
-                    child: Center(
-                      child: Icon(
-                        Icons.map,
-                        size: 40.sp,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          SizedBox(height: 16.h),
-        ],
-      ),
-    );
-  }
+  Widget _buildMap(CompanyEntity company) {
+    final address = company.address.isNotEmpty 
+        ? company.address 
+        : (_companyData?['address']?.toString() ?? '');
+    final detailAddress = company.detailAddress.isNotEmpty
+        ? company.detailAddress
+        : (_companyData?['detailAddress']?.toString() ?? '');
+    
+    final fullAddress = detailAddress.isNotEmpty 
+        ? '$address $detailAddress' 
+        : address;
 
-  Widget _buildHistory() {
+    if (fullAddress.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // 위도/경도 정보 가져오기
+    final latitude = company.latitude ?? _companyData?['latitude'] as double?;
+    final longitude = company.longitude ?? _companyData?['longitude'] as double?;
+
     return Container(
       color: Colors.white,
       padding: EdgeInsets.all(16.w),
@@ -353,7 +593,7 @@ class _CompanyPageViewState extends State<CompanyPageView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '인사말',
+            '오시는 길',
             style: TextStyle(
               fontSize: 16.sp,
               fontWeight: FontWeight.bold,
@@ -361,38 +601,111 @@ class _CompanyPageViewState extends State<CompanyPageView> {
             ),
           ),
           SizedBox(height: 12.h),
-          Text(
-            '산업현장에서 노력는 소재 산업이 현업일 되지 않아 평판이는 이해몰을'
-            '되지 않기 위함 노력는 가입일봉하를 헙력하려 허비까지 가는합니다. '
-            '산업현장에서 노력는 소재 산업이 현업일 되지 않아 평판이는 이해'
-            '몰를 되지 않기 위함 에이 울증이 기계부품을 헙력하려 허비까지 기는'
-            '합니다. 산업현장에서 노력는 소재 산업이 현업일 되지 않아 평판이는 '
-            '이해몰를 되지 않기 위함 에이 울증이 기계부품을 헙력하려 허비까지 '
-            '기는합니다. 산업현장에서 노력는 소재 산업이 현업일 되지 않아 평판'
-            '되는 이해몰를 되지 않기 위함 에이 울증이 기계부품을 헙력하려 허비'
-            '까지 기는합니다.',
-            style: TextStyle(
-              fontSize: 13.sp,
-              color: Colors.black87,
-              height: 1.5,
+          if (fullAddress.isNotEmpty) ...[
+            Text(
+              '주소   $fullAddress',
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.black87,
+              ),
             ),
-          ),
-          SizedBox(height: 16.h),
-          Text(
-            '(주)승목정준오늘 보표  감 사 장',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: Colors.black87,
-              fontWeight: FontWeight.w500,
+            SizedBox(height: 12.h),
+          ],
+          if ((latitude != null && longitude != null) || fullAddress.isNotEmpty) ...[
+            Container(
+              height: 200.h,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8.r),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.r),
+                child: NaverMapWidget(
+                  companies: [company],
+                  onCompanyTapped: (company) {
+                    // 지도에서 기업 클릭 시 처리 (필요시)
+                  },
+                  centerOnCompany: true,
+                  showCurrentLocationMarker: false,
+                ),
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
+            SizedBox(height: 16.h),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildProducts() {
+  Widget _buildHistory(CompanyEntity company) {
+    final history = _companyData?['history'] as List<dynamic>? ?? [];
+    
+    if (history.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      color: Colors.white,
+      padding: EdgeInsets.all(16.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '연혁',
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          ...history.map((item) {
+            final year = item['year']?.toString() ?? '';
+            final content = item['content']?.toString() ?? '';
+            if (year.isEmpty && content.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (year.isNotEmpty)
+                    SizedBox(
+                      width: 60.w,
+                      child: Text(
+                        year,
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  if (year.isNotEmpty) SizedBox(width: 12.w),
+                  Expanded(
+                    child: Text(
+                      content,
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: Colors.black87,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProducts(CompanyEntity company) {
+    // 프리미엄 게시글과 일반 게시글 분리
+    final premiumPosts = _posts.where((post) => post.isPremium).toList();
+    final normalPosts = _posts.where((post) => !post.isPremium).toList();
+
     return Container(
       color: Colors.white,
       padding: EdgeInsets.all(16.w),
@@ -407,16 +720,31 @@ class _CompanyPageViewState extends State<CompanyPageView> {
               color: Colors.black,
             ),
           ),
-          SizedBox(height: 16.h),
-          _buildProductSection('프리미엄 게시글'),
-          SizedBox(height: 16.h),
-          _buildProductSection('일반게시글'),
+          if (premiumPosts.isNotEmpty) ...[
+            SizedBox(height: 16.h),
+            _buildProductSection('프리미엄 게시글', premiumPosts),
+          ],
+          if (normalPosts.isNotEmpty) ...[
+            SizedBox(height: 16.h),
+            _buildProductSection('일반게시글', normalPosts),
+          ],
+          if (_posts.isEmpty && !_isLoadingPosts)
+            Padding(
+              padding: EdgeInsets.only(top: 16.h),
+              child: Text(
+                '등록된 게시글이 없습니다.',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildProductSection(String title) {
+  Widget _buildProductSection(String title, List<PostEntity> posts) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -438,177 +766,205 @@ class _CompanyPageViewState extends State<CompanyPageView> {
             crossAxisSpacing: 12.w,
             mainAxisSpacing: 12.h,
           ),
-          itemCount: 2,
+          itemCount: posts.length,
           itemBuilder: (context, index) {
-            return _buildProductCard(title == '프리미엄 게시글');
+            return _buildProductCard(posts[index]);
           },
         ),
       ],
     );
   }
 
-  Widget _buildProductCard(bool isPremium) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(
-          color: isPremium ? const Color(0xFFFF9800) : Colors.grey[300]!,
-          width: isPremium ? 1.5 : 1,
+  Widget _buildProductCard(PostEntity post) {
+    final imageUrl = post.images.isNotEmpty ? post.images.first : null;
+    final categoryText = (post.subcategory?.isNotEmpty == true) 
+        ? post.subcategory! 
+        : ((post.category?.isNotEmpty == true) ? post.category! : '카테고리 없음');
+
+    return GestureDetector(
+      onTap: () {
+        context.push('/post/${post.id}');
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(
+            color: post.isPremium ? const Color(0xFFFF9800) : Colors.grey[300]!,
+            width: post.isPremium ? 1.5 : 1,
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
-                    color: Colors.grey[200],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
-                    child: Image.asset(
-                      'assets/images/sample.png',
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey[300],
-                          child: Icon(
-                            Icons.image,
-                            size: 30.sp,
-                            color: Colors.grey[500],
-                          ),
-                        );
-                      },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
+                      color: Colors.grey[200],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(8.r)),
+                      child: imageUrl != null
+                          ? Image.network(
+                              imageUrl,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: Colors.grey[300],
+                                  child: Icon(
+                                    Icons.image,
+                                    size: 30.sp,
+                                    color: Colors.grey[500],
+                                  ),
+                                );
+                              },
+                            )
+                          : Container(
+                              color: Colors.grey[300],
+                              child: Icon(
+                                Icons.image,
+                                size: 30.sp,
+                                color: Colors.grey[500],
+                              ),
+                            ),
                     ),
                   ),
-                ),
-                Positioned(
-                  top: 4.h,
-                  right: 4.w,
-                  child: Container(
-                    width: 24.w,
-                    height: 24.h,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+                  if (post.isPremium)
+                    Positioned(
+                      top: 4.h,
+                      left: 4.w,
+                      child: Icon(
+                        Icons.verified,
+                        color: const Color(0xFFFF9800),
+                        size: 20.sp,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.favorite,
-                      color: Colors.red,
-                      size: 16.sp,
-                    ),
-                  ),
-                ),
-                if (isPremium)
-                  Positioned(
-                    top: 4.h,
-                    left: 4.w,
-                    child: Icon(
-                      Icons.verified,
-                      color: const Color(0xFFFF9800),
-                      size: 20.sp,
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(8.w),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isPremium ? '기업명 및 로고' : '기업명 및 로고',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black,
+            Padding(
+              padding: EdgeInsets.all(8.w),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (post.equipmentName?.isNotEmpty == true) ? post.equipmentName! : (post.title.isNotEmpty ? post.title : '게시글 제목 없음'),
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  '카테고리 설명',
-                  style: TextStyle(
-                    fontSize: 10.sp,
-                    color: Colors.grey[500],
+                  SizedBox(height: 4.h),
+                  Text(
+                    categoryText,
+                    style: TextStyle(
+                      fontSize: 10.sp,
+                      color: Colors.grey[500],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildBottomButtons() {
-    return Container(
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, -2),
+    return Consumer<CompanyViewModel>(
+      builder: (context, viewModel, child) {
+        final company = viewModel.selectedCompany;
+        if (company == null) return const SizedBox.shrink();
+
+        return Container(
+          padding: EdgeInsets.all(16.w),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withValues(alpha: 0.1),
+                spreadRadius: 1,
+                blurRadius: 4,
+                offset: const Offset(0, -2),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () {},
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF1E3A5F)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.r),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: company.phone.isNotEmpty
+                      ? () async {
+                          final uri = Uri.parse('tel:${company.phone.replaceAll('-', '').replaceAll(' ', '')}');
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri);
+                          }
+                        }
+                      : null,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF1E3A5F)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 16.h),
+                  ),
+                  child: Text(
+                    '전화걸기',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1E3A5F),
+                    ),
+                  ),
                 ),
-                padding: EdgeInsets.symmetric(vertical: 16.h),
               ),
-              child: Text(
-                '전화걸기',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E3A5F),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: company.website != null && company.website!.isNotEmpty
+                      ? () async {
+                          String url = company.website!;
+                          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                            url = 'https://$url';
+                          }
+                          final uri = Uri.parse(url);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E3A5F),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 16.h),
+                  ),
+                  child: Text(
+                    '회사홈페이지',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E3A5F),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                padding: EdgeInsets.symmetric(vertical: 16.h),
-              ),
-              child: Text(
-                '회사홈페이지',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

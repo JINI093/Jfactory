@@ -1,4 +1,4 @@
-name: Deploy Admin to GitHub Pages
+name: Deploy Admin to Firebase Hosting
 
 on:
   push:
@@ -11,6 +11,8 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     
     steps:
       - name: Checkout repository
@@ -19,20 +21,28 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.24.5'
           channel: 'stable'
+          cache: true
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Build web
-        run: flutter build web --target lib/admin_main.dart --base-href "/Jfactory/"
+        run: flutter build web --target lib/admin_main.dart --base-href "/"
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
-          destination_dir: ./admin
-          cname: false
+          node-version: '18'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase Hosting
+        run: |
+          firebase use fir-test-96091 --token "${{ secrets.FIREBASE_TOKEN }}"
+          firebase deploy --only hosting --project fir-test-96091 --token "${{ secrets.FIREBASE_TOKEN }}"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 

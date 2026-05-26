@@ -151,7 +151,9 @@ class _CategoryFilterBottomSheetState extends State<CategoryFilterBottomSheet> {
         color: Colors.white,
         child: Column(
           children: [
-            if (subCategories.isNotEmpty)
+            if (selectedMainCategory == null)
+              Expanded(child: _buildAllCompaniesList())
+            else if (subCategories.isNotEmpty)
               Expanded(
                 child: ListView(
                   children: subCategories.map((subCategory) {
@@ -186,6 +188,52 @@ class _CategoryFilterBottomSheetState extends State<CategoryFilterBottomSheet> {
     );
   }
 
+  Widget _buildAllCompaniesList() {
+    return Consumer<MainViewModel>(
+      builder: (context, mainViewModel, child) {
+        if (mainViewModel.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (mainViewModel.companies.isEmpty) {
+          return Center(
+            child: Text(
+              '등록된 기업이 없습니다.',
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: Colors.grey[600],
+              ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: mainViewModel.companies.length,
+          itemBuilder: (context, index) {
+            final company = mainViewModel.companies[index];
+            return Container(
+              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[200]!),
+                ),
+              ),
+              child: Text(
+                company.companyName,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: Colors.black87,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildBottomSection() {
     return Container(
       padding: EdgeInsets.all(20.w),
@@ -197,9 +245,65 @@ class _CategoryFilterBottomSheetState extends State<CategoryFilterBottomSheet> {
       ),
       child: Column(
         children: [
-          // Selected filter chip
-          if (selectedMainCategory != null && selectedSubCategory != null && 
-              selectedSubCategory != '전체' && selectedSubCategory != '전체 하위카테고리')
+          // Selected filter chip / 전체보기
+          if (selectedMainCategory == null)
+            Container(
+              margin: EdgeInsets.only(bottom: 16.h),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(16.r),
+                      border: Border.all(color: Colors.grey[300]!),
+                    ),
+                    child: Text(
+                      '전체보기',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _resetFilters,
+                    child: Container(
+                      height: 32.h,
+                      padding: EdgeInsets.symmetric(horizontal: 12.w),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.refresh,
+                            size: 16.sp,
+                            color: Colors.black87,
+                          ),
+                          SizedBox(width: 4.w),
+                          Text(
+                            '초기화',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (selectedSubCategory != null &&
+              selectedSubCategory != '전체' &&
+              selectedSubCategory != '전체 하위카테고리')
             Container(
               margin: EdgeInsets.only(bottom: 16.h),
               child: Wrap(
@@ -330,7 +434,11 @@ void showCategoryFilterBottomSheet(BuildContext context) {
       final subCategory = result['subCategory'] as String?;
       
       // MainViewModel에 카테고리 필터 적용
-      mainViewModel.updateCategoryFilter(mainCategory, subCategory);
+      mainViewModel.updateCategoryFilter(
+        mainCategory,
+        subCategory,
+        showAll: mainCategory == null,
+      );
       
       debugPrint('Selected category filters: $result');
       

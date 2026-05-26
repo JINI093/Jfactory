@@ -1202,21 +1202,6 @@ class _SignupViewState extends State<SignupView> {
       return;
     }
     
-    // Always use test mode for simulator to avoid reCAPTCHA issues
-    if (Theme.of(context).platform == TargetPlatform.iOS) {
-      // Test mode for simulator
-      if (mounted) {
-        setState(() {
-          _verificationId = 'test-verification-id';
-          _isVerificationCodeSent = true;
-          _isLoading = false;
-          _startCountdown();
-        });
-        _showError('테스트 모드: 인증번호는 123456 입니다.');
-      }
-      return;
-    }
-    
     // Format phone number for Firebase (Korean format)
     String formattedPhone = phoneNumber;
     if (!formattedPhone.startsWith('+')) {
@@ -1227,12 +1212,20 @@ class _SignupViewState extends State<SignupView> {
       }
     }
     
+    // Validate phone number format
+    final phoneRegex = RegExp(r'^\+82[0-9]{9,10}$');
+    if (!phoneRegex.hasMatch(formattedPhone)) {
+      _showError('올바른 휴대폰 번호 형식이 아닙니다. (예: 010-1234-5678)');
+      return;
+    }
+    
     if (mounted) {
       setState(() {
         _isLoading = true;
       });
     }
     
+    try {
     await _authDataSource.sendPhoneVerification(
       formattedPhone,
       (verificationId) {
@@ -1243,7 +1236,7 @@ class _SignupViewState extends State<SignupView> {
             _isLoading = false;
             _startCountdown();
           });
-          _showError('인증번호가 발송되었습니다.');
+            _showError('인증번호가 발송되었습니다. SMS를 확인해주세요.');
         }
       },
       (error) {
@@ -1255,6 +1248,14 @@ class _SignupViewState extends State<SignupView> {
         }
       },
     );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showError('인증번호 전송 중 오류가 발생했습니다: ${e.toString()}');
+      }
+    }
   }
   
   
@@ -1266,32 +1267,16 @@ class _SignupViewState extends State<SignupView> {
       return;
     }
     
-    // Test mode check
-    if (_verificationId == 'test-verification-id') {
-      if (code == '123456') {
-        if (mounted) {
-          setState(() {
-            _isPhoneVerified = true;
-            _isLoading = false;
-            _verificationValidationMessage = '인증되었습니다';
-          });
-          _showError('전화번호 인증이 완료되었습니다.');
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _verificationValidationMessage = '인증번호가 다릅니다.';
-          });
-          _showError('테스트 모드에서는 123456을 입력하세요.');
-        }
-      }
+    // Validate code format (6 digits)
+    if (code.length != 6 || !RegExp(r'^[0-9]{6}$').hasMatch(code)) {
+      _showError('인증번호는 6자리 숫자입니다.');
       return;
     }
     
     if (mounted) {
       setState(() {
         _isLoading = true;
+        _verificationValidationMessage = '';
       });
     }
     
@@ -1309,20 +1294,28 @@ class _SignupViewState extends State<SignupView> {
           });
           _showError('전화번호 인증이 완료되었습니다.');
           // Sign out immediately after verification to allow email signup
+          // PhoneAuth automatically signs in the user, but we need to sign out
+          // to allow email/password signup later
+          try {
           await FirebaseAuth.instance.signOut();
+          } catch (e) {
+            debugPrint('Sign out after phone verification: $e');
+            // Continue even if sign out fails
+          }
         } else {
           setState(() {
-            _verificationValidationMessage = '인증번호가 다릅니다.';
+            _verificationValidationMessage = '인증번호가 올바르지 않습니다.';
           });
-          _showError('인증번호가 올바르지 않습니다.');
+          _showError('인증번호가 올바르지 않습니다. 다시 확인해주세요.');
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _verificationValidationMessage = '인증 중 오류가 발생했습니다.';
         });
-        _showError('인증 중 오류가 발생했습니다.');
+        _showError('인증 중 오류가 발생했습니다: ${e.toString()}');
       }
     }
   }
@@ -1532,6 +1525,7 @@ class _SignupViewState extends State<SignupView> {
         'phone': userModel.phone,
         'userType': userModel.userType.toString().split('.').last, // 'individual' or 'company'
         'createdAt': FieldValue.serverTimestamp(),
+        'isApproved': _userType == UserType.company ? false : true, // 기업은 승인 필요
       };
       
       // Add company-specific data if user is company type

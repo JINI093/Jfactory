@@ -1,19 +1,249 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import '../../../domain/entities/post_entity.dart';
+import '../../../data/models/post_model.dart';
+import '../../../domain/repositories/post_repository.dart';
 import 'post_edit_view.dart';
 
-class PostDetailView extends StatelessWidget {
-  final PostEntity post;
+class PostDetailView extends StatefulWidget {
+  final PostEntity? post;
+  final String? postId;
+  final bool allowAdminActions;
+  final bool readOnly;
 
   const PostDetailView({
     super.key,
-    required this.post,
+    this.post,
+    this.postId,
+    this.allowAdminActions = false,
+    this.readOnly = false,
   });
 
   @override
+  State<PostDetailView> createState() => _PostDetailViewState();
+}
+
+class _PostDetailViewState extends State<PostDetailView> {
+  PostEntity? _post;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  Future<void> _deletePost(PostEntity post) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('게시글 삭제'),
+          content: const Text('정말 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('삭제'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await context.read<PostRepository>().deletePost(post.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('게시글이 삭제되었습니다.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('게시글 삭제 중 오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.post != null) {
+      _post = widget.post;
+      _isLoading = false;
+    } else if (widget.postId != null) {
+      _loadPost(widget.postId!);
+    } else {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '게시글 정보가 없습니다.';
+      });
+    }
+  }
+
+  Future<void> _loadPost(String postId) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('posts')
+          .doc(postId)
+          .get();
+
+      if (!doc.exists) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '게시글을 찾을 수 없습니다.';
+        });
+        return;
+      }
+
+      final data = doc.data() as Map<String, dynamic>;
+      data['id'] = doc.id;
+      
+      // 이미지 데이터 디버그
+      debugPrint('📸 게시글 이미지 데이터: ${data['images']}');
+      debugPrint('📸 이미지 타입: ${data['images']?.runtimeType}');
+      if (data['images'] != null && data['images'] is List) {
+        debugPrint('📸 이미지 개수: ${(data['images'] as List).length}');
+        debugPrint('📸 이미지 URL들: ${data['images']}');
+      }
+      
+      // 조회수 증가 (FieldValue.increment 사용 - 동시성 안전)
+      try {
+        final currentViewCount = (data['viewCount'] as int?) ?? 0;
+        debugPrint('📊 게시글 조회수 증가: $postId (현재: $currentViewCount)');
+        
+        await FirebaseFirestore.instance
+            .collection('posts')
+            .doc(postId)
+            .update({'viewCount': FieldValue.increment(1)});
+        
+        // 조회수 증가 반영 (현재 값 + 1)
+        data['viewCount'] = currentViewCount + 1;
+        debugPrint('✅ 조회수 증가 완료: ${currentViewCount + 1}');
+      } catch (e) {
+        // 조회수 증가 실패해도 게시글은 표시
+        debugPrint('⚠️ 조회수 증가 실패: $e');
+        // viewCount가 없을 수 있으므로 기본값 설정
+        if (!data.containsKey('viewCount')) {
+          data['viewCount'] = 0;
+        }
+      }
+      
+      final postModel = PostModel.fromJson(data);
+      final post = postModel.toEntity();
+
+      setState(() {
+        _post = post;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '게시글을 불러오는 중 오류가 발생했습니다: $e';
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            '게시글 상세',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFF1E3A5F),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null || _post == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(
+            '게시글 상세',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+          backgroundColor: const Color(0xFF1E3A5F),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios),
+            onPressed: () => context.pop(),
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64.sp,
+                color: Colors.grey[400],
+              ),
+              SizedBox(height: 16.h),
+              Text(
+                _errorMessage ?? '게시글을 찾을 수 없습니다.',
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final post = _post!;
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final canEdit = !widget.readOnly &&
+        (widget.allowAdminActions || (currentUser != null && currentUser.uid == post.companyId));
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -29,20 +259,42 @@ class PostDetailView extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            // 관리자 페이지에서 Navigator.push로 들어온 경우를 처리
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            } else {
+              // Navigator.pop이 불가능한 경우 (예: 웹 환경)
+              try {
+                context.pop();
+              } catch (e) {
+                // context.pop도 실패하면 Navigator.pop을 강제 시도
+                Navigator.of(context).pop();
+              }
+            }
+          },
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PostEditView(post: post),
-                ),
-              );
-            },
-          ),
+          if (canEdit)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostEditView(
+                      post: post,
+                      allowAdminActions: widget.allowAdminActions,
+                    ),
+                  ),
+                );
+              },
+            ),
+          if (canEdit)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () => _deletePost(post),
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -91,9 +343,9 @@ class PostDetailView extends StatelessWidget {
             
             SizedBox(height: 16.h),
             
-            // 제목
+            // 제목 (equipmentName이 있으면 우선 표시)
             Text(
-              post.title,
+              post.equipmentName ?? post.title,
               style: TextStyle(
                 fontSize: 24.sp,
                 fontWeight: FontWeight.bold,
@@ -105,29 +357,146 @@ class PostDetailView extends StatelessWidget {
             
             // 이미지
             if (post.images.isNotEmpty) ...[
-              Container(
+              SizedBox(
                 height: 200.h,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.r),
-                  color: Colors.grey[200],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: Image.network(
-                    post.images.first,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: post.images.length,
+                  itemBuilder: (context, index) {
+                    final imageUrl = post.images[index];
+                    debugPrint('🖼️ 이미지 로드 시도: $imageUrl (인덱스: $index)');
+                    
+                    // 이미지 URL 유효성 검사
+                    if (imageUrl.isEmpty || !imageUrl.startsWith('http')) {
+                      debugPrint('⚠️ 유효하지 않은 이미지 URL: $imageUrl');
                       return Container(
-                        color: Colors.grey[300],
-                        child: Icon(
-                          Icons.image_not_supported,
-                          size: 48.sp,
-                          color: Colors.grey[600],
+                        width: 300.w,
+                        margin: EdgeInsets.only(right: 8.w),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8.r),
+                          color: Colors.grey[200],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.image_not_supported,
+                              size: 48.sp,
+                              color: Colors.grey[600],
+                            ),
+                            SizedBox(height: 8.h),
+                            Text(
+                              '유효하지 않은 이미지 URL',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ),
                       );
-                    },
-                  ),
+                    }
+                    
+                    return Container(
+                      width: 300.w,
+                      margin: EdgeInsets.only(right: 8.w),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8.r),
+                        color: Colors.grey[200],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Image.network(
+                          imageUrl,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) {
+                              debugPrint('✅ 이미지 로드 완료: $imageUrl');
+                              return child;
+                            }
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            debugPrint('❌ 이미지 로드 실패: $imageUrl');
+                            debugPrint('❌ 오류: $error');
+                            debugPrint('❌ StackTrace: $stackTrace');
+                            return Container(
+                              color: Colors.grey[300],
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.image_not_supported,
+                                    size: 48.sp,
+                                    color: Colors.grey[600],
+                                  ),
+                                  SizedBox(height: 8.h),
+                                  Text(
+                                    '이미지를 불러올 수 없습니다',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                  SizedBox(height: 4.h),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.w),
+                                    child: Text(
+                                      imageUrl.length > 30 
+                                          ? '${imageUrl.substring(0, 30)}...'
+                                          : imageUrl,
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        color: Colors.grey[500],
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              SizedBox(height: 16.h),
+            ] else ...[
+              // 이미지가 없는 경우 디버그 정보 표시
+              Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 20.sp,
+                      color: Colors.grey[600],
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      '등록된 이미지가 없습니다.',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               SizedBox(height: 16.h),

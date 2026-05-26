@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../viewmodels/company_viewmodel.dart';
 import '../../viewmodels/favorite_viewmodel.dart';
+import '../../viewmodels/main_viewmodel.dart';
+import '../../widgets/naver_map_widget.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../../domain/entities/post_entity.dart';
@@ -34,6 +36,15 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
       context.read<FavoriteViewModel>().loadFavoriteCompanies();
       _loadPosts();
     });
+  }
+
+  @override
+  void dispose() {
+    // 시스템 뒤로가기/제스처로 나가도 검색 조건 초기화
+    try {
+      context.read<MainViewModel>().clearFilters();
+    } catch (_) {}
+    super.dispose();
   }
 
   Future<void> _loadPosts() async {
@@ -93,7 +104,10 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
         title: const Text('기업 소개'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            context.read<MainViewModel>().clearFilters();
+            context.pop();
+          },
         ),
         actions: [
           Consumer2<CompanyViewModel, FavoriteViewModel>(
@@ -254,7 +268,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
       child: imageUrl != null && imageUrl.isNotEmpty
           ? Image.network(
               imageUrl,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               width: double.infinity,
               height: 220,
               loadingBuilder: (context, child, loadingProgress) {
@@ -441,6 +455,18 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
   }
 
   Widget _buildMapSection(CompanyEntity company) {
+    final address = company.address.trim();
+    final detailAddress = company.detailAddress.trim();
+    final fullAddress = detailAddress.isNotEmpty ? '$address $detailAddress' : address;
+    final latitude = company.latitude;
+    final longitude = company.longitude;
+    final hasLocationInfo =
+        (latitude != null && longitude != null) || fullAddress.isNotEmpty;
+
+    if (!hasLocationInfo) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.all(16),
@@ -452,31 +478,43 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('주소  ', style: TextStyle(fontSize: 14, color: Colors.black87)),
-              Expanded(
-                child: Text(
-                  company.address,
-                  style: const TextStyle(fontSize: 14, color: Colors.black87),
+          if (fullAddress.isNotEmpty) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('주소  ', style: TextStyle(fontSize: 14, color: Colors.black87)),
+                Expanded(
+                  child: Text(
+                    fullAddress,
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            height: 180,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
+              ],
             ),
-            child: Center(
-              child: Icon(Icons.map, size: 40, color: Colors.grey[500]),
-            ),
-          ),
+            const SizedBox(height: 12),
+          ],
+          _buildMapContainer(company),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapContainer(CompanyEntity company) {
+    return Container(
+      height: 180,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: NaverMapWidget(
+          companies: [company],
+          onCompanyTapped: (_) {},
+          centerOnCompany: true,
+          showCurrentLocationMarker: false,
+        ),
       ),
     );
   }

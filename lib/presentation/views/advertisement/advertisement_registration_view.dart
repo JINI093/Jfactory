@@ -14,7 +14,7 @@ class AdvertisementRegistrationView extends StatefulWidget {
 
 class _AdvertisementRegistrationViewState extends State<AdvertisementRegistrationView> {
   int _selectedAdType = 0; // 0: 기업광고, 1: 제품광고
-  DateTime _selectedMonth = DateTime(2025, 5);
+  DateTime _selectedMonth = DateTime.now();
   DateTime? _startDate;
   DateTime? _endDate;
   bool _isSelectingRange = false;

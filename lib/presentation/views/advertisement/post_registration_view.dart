@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../../domain/entities/post_entity.dart';
+import '../../../domain/entities/user_entity.dart';
 import '../../../data/repositories/post_repository_impl.dart';
 import '../../../data/datasources/firestore_datasource.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -60,6 +61,21 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    
+    // 일반회원 접근 차단
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authViewModel = context.read<AuthViewModel>();
+      final currentUser = authViewModel.currentUser;
+      if (currentUser == null || currentUser.userType == UserType.individual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('기업회원만 게시글을 작성할 수 있습니다.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        context.pop();
+      }
+    });
   }
 
   @override
@@ -236,6 +252,7 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
 
   @override
   Widget build(BuildContext context) {
+    final isKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
@@ -253,7 +270,7 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
               ],
             ),
           ),
-          _buildBottomSection(),
+          if (!isKeyboardVisible) _buildBottomSection(),
         ],
       ),
     );
@@ -693,6 +710,20 @@ class _PostRegistrationViewState extends State<PostRegistrationView>
               backgroundColor: Colors.red,
             ),
           );
+        }
+        return;
+      }
+      
+      // 일반회원 접근 차단
+      if (currentUser.userType == UserType.individual) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('기업회원만 게시글을 작성할 수 있습니다.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          context.pop();
         }
         return;
       }

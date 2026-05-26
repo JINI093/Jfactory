@@ -21,6 +21,7 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  bool _isUpdatingApproval = false;
 
   @override
   void dispose() {
@@ -275,23 +276,112 @@ class _CompanyDetailViewState extends State<CompanyDetailView> {
 
         return SingleChildScrollView(
           padding: EdgeInsets.all(24.w),
-          child: Table(
-            columnWidths: {
-              0: FlexColumnWidth(1.5),
-              1: FlexColumnWidth(3),
-            },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInfoRow('기업대표명', companyData['ceoName'] ?? widget.userData['name'] ?? '정보 없음'),
-              _buildInfoRow('전화번호', companyData['phone'] ?? widget.userData['phone'] ?? '정보 없음'),
-              _buildInfoRow('이메일', userEmail),
-              _buildInfoRow('홈페이지', companyData['website'] ?? '정보 없음'),
-              _buildInfoRow('홈페이지 사진', '', isImage: true, imageUrl: _getPhotoUrl(companyData)),
-              _buildInfoRow('사업자등록증', '', isImage: true, imageUrl: companyData['businessLicenseImage']),
+              _buildApprovalSection(),
+              Table(
+                columnWidths: {
+                  0: FlexColumnWidth(1.5),
+                  1: FlexColumnWidth(3),
+                },
+                children: [
+                  _buildInfoRow('기업대표명', companyData['ceoName'] ?? widget.userData['name'] ?? '정보 없음'),
+                  _buildInfoRow('전화번호', companyData['phone'] ?? widget.userData['phone'] ?? '정보 없음'),
+                  _buildInfoRow('이메일', userEmail),
+                  _buildInfoRow('홈페이지', companyData['website'] ?? '정보 없음'),
+                  _buildInfoRow('홈페이지 사진', '', isImage: true, imageUrl: _getPhotoUrl(companyData)),
+                  _buildInfoRow('사업자등록증', '', isImage: true, imageUrl: companyData['businessLicenseImage']),
+                ],
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _buildApprovalSection() {
+    final isApproved = widget.userData['isApproved'] == true ||
+        widget.userData['isApproved']?.toString() == 'true';
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+      margin: EdgeInsets.only(bottom: 12.h),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Row(
+        children: [
+          Text(
+            isApproved ? '승인됨' : '미승인',
+            style: TextStyle(
+              fontSize: _responsiveFontSize(12),
+              fontWeight: FontWeight.w600,
+              color: isApproved ? Colors.green : Colors.red,
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: _isUpdatingApproval ? null : () => _updateApproval(true),
+            child: const Text('승인'),
+          ),
+          SizedBox(width: 8.w),
+          TextButton(
+            onPressed: _isUpdatingApproval ? null : () => _updateApproval(false),
+            child: const Text('반려'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateApproval(bool isApproved) async {
+    setState(() {
+      _isUpdatingApproval = true;
+    });
+
+    try {
+      await _firestore.collection('users').doc(widget.userId).set(
+        {
+          'isApproved': isApproved,
+          'approvalDate': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await _firestore.collection('companies').doc(widget.userId).set(
+        {
+          'isVerified': isApproved,
+          'approvalDate': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isApproved ? '승인 처리되었습니다.' : '반려 처리되었습니다.'),
+            backgroundColor: isApproved ? Colors.green : Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('승인 처리 중 오류가 발생했습니다: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingApproval = false;
+        });
+      }
+    }
   }
 
   TableRow _buildInfoRow(String label, String value, {bool isImage = false, String? imageUrl}) {

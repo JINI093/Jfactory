@@ -66,7 +66,7 @@
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-8455118855307052~4986340938</string>
 	<key>GMSApiKey</key>
-	<string>AIzaSyAQaAqDNxtkH0D_tPv39VtqIzn9dgZnViA</string>
+	<string>AIzaSyCsmOXLEjK487K9f7wlYaFl_yQR5HpIWGY</string>
 	<key>KAKAO_APP_KEY</key>
 	<string>a22df9f48c7bd192fa4cc21ee0e8f923</string>
 	<key>LSApplicationQueriesSchemes</key>
@@ -93,9 +93,9 @@
 	<key>NidAppName</key>
 	<string>제작소</string>
 	<key>NidClientID</key>
-	<string>0Yn_U4Zvuccup1dIyQAi</string>
+	<string>6VBjy8uAYG4OQuVORB0s</string>
 	<key>NidClientSecret</key>
-	<string>PYehz3hond</string>
+	<string>2IwucUmbaX</string>
 	<key>NidUrlScheme</key>
 	<string>naverlogin</string>
 	<key>SKAdNetworkItems</key>

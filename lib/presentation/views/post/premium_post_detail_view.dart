@@ -154,7 +154,7 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
                           company!.logo!,
                           width: 48.w,
                           height: 48.h,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) {
                             return _buildCompanyInitial();
                           },
@@ -198,7 +198,7 @@ class _PremiumPostDetailViewState extends State<PremiumPostDetailView> {
                 company!.photos.first,
                 width: double.infinity,
                 height: double.infinity,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return _buildPlaceholderImage();
                 },

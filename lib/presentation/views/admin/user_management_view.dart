@@ -156,10 +156,7 @@ class _UserManagementViewState extends State<UserManagementView> {
   Widget _buildUserTable() {
     Query query = _firestore.collection('users');
 
-    // 사용자 타입 필터 적용
-    if (_selectedUserType != 'all') {
-      query = query.where('userType', isEqualTo: _selectedUserType);
-    }
+    // 사용자 타입 필터는 클라이언트에서 처리 (기업 데이터 누락 방지)
 
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
@@ -179,11 +176,25 @@ class _UserManagementViewState extends State<UserManagementView> {
 
         final users = snapshot.data?.docs ?? [];
         
-        // 검색 필터 적용
+        // 사용자 타입 + 검색 필터 적용
         final filteredUsers = users.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final userType = data['userType']?.toString() ?? '';
+          final hasCompanyName = (data['companyName']?.toString() ?? '').isNotEmpty;
+          final companyRegistered = data['companyRegistered'] == true;
+          
+          if (_selectedUserType == 'company') {
+            if (!(userType == 'company' || hasCompanyName || companyRegistered)) {
+              return false;
+            }
+          } else if (_selectedUserType == 'individual') {
+            if (userType != 'individual') {
+              return false;
+            }
+          }
+
           if (_searchQuery.isEmpty) return true;
           
-          final data = doc.data() as Map<String, dynamic>;
           final name = data['name']?.toString().toLowerCase() ?? '';
           final email = data['email']?.toString().toLowerCase() ?? '';
           final companyName = data['companyName']?.toString().toLowerCase() ?? '';
@@ -378,7 +389,11 @@ class _UserManagementViewState extends State<UserManagementView> {
   TableRow _buildTableRow(int index, String userId, Map<String, dynamic> userData) {
     if (_selectedUserType == 'company') {
       final companyName = userData['companyName'] ?? '기업명 없음';
-      final isApproved = userData['isApproved'] ?? false;
+      // isApproved 필드가 없으면 자동 승인으로 간주 (true)
+      // 필드가 있으면 그 값을 사용, 없으면 true (자동 승인)
+      final isApproved = userData.containsKey('isApproved') 
+          ? (userData['isApproved'] == true || userData['isApproved'] == 'true')
+          : true; // 필드가 없으면 자동 승인
       final email = userData['email'] ?? '이메일 없음';
       final registrationPath = _getRegistrationPath(userData);
       final representativeName = userData['representativeName'] ?? 

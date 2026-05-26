@@ -82,7 +82,13 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
   @override
   Future<void> createUser(UserModel user) async {
     try {
-      await _usersCollection.doc(user.uid).set(user.toJson());
+      final userData = user.toJson();
+      // isApproved 필드가 없으면 사용자 타입에 따라 설정
+      if (!userData.containsKey('isApproved')) {
+        final userType = userData['userType']?.toString();
+        userData['isApproved'] = userType == 'company' ? false : true;
+      }
+      await _usersCollection.doc(user.uid).set(userData);
     } catch (e) {
       throw Exception('사용자 생성 실패: $e');
     }
@@ -154,10 +160,37 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
       print('🔍 FirestoreDataSource: Loading companies with filters');
       print('🔍 Parameters - category: $category, subcategory: $subcategory, subSubcategory: $subSubcategory');
       
-      // 카테고리 필터는 클라이언트 사이드에서 적용 (Firestore 필드 매칭 문제 방지)
-      // Firestore 쿼리는 최소한의 필터만 적용
+      // 카테고리 필터 적용 (정확한 매칭)
+      if (category != null && category.isNotEmpty) {
+        try {
+          query = query.where('category', isEqualTo: category.trim());
+          print('🔍 Applied category filter: "${category.trim()}"');
+        } catch (e) {
+          print('⚠️ FirestoreDataSource: category filter 실패, 클라이언트에서 필터링: $e');
+        }
+      }
       
-      // orderBy는 필터 없이 먼저 시도
+      // 세부카테고리 필터 적용
+      if (subcategory != null && subcategory.isNotEmpty) {
+        try {
+          query = query.where('subcategory', isEqualTo: subcategory.trim());
+          print('🔍 Applied subcategory filter: "${subcategory.trim()}"');
+        } catch (e) {
+          print('⚠️ FirestoreDataSource: subcategory filter 실패, 클라이언트에서 필터링: $e');
+        }
+      }
+      
+      // 3차 세부카테고리 필터 적용
+      if (subSubcategory != null && subSubcategory.isNotEmpty) {
+        try {
+          query = query.where('subSubcategory', isEqualTo: subSubcategory.trim());
+          print('🔍 Applied subSubcategory filter: "${subSubcategory.trim()}"');
+        } catch (e) {
+          print('⚠️ FirestoreDataSource: subSubcategory filter 실패, 클라이언트에서 필터링: $e');
+        }
+      }
+      
+      // orderBy는 필터 적용 후 시도
       if (orderBy != null) {
         try {
           query = query.orderBy(orderBy, descending: descending);
@@ -167,12 +200,11 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
         }
       }
       
-      // 클라이언트에서 필터링하기 위해 충분히 많이 가져옴 (limit이 있어도 더 많이)
+      // limit 적용
       if (limit != null && limit > 0) {
-        // 충분히 많이 가져와서 클라이언트에서 필터링 후 limit 적용
-        query = query.limit(limit * 10); // 안전하게 충분히 많이
+        query = query.limit(limit);
       } else {
-        // limit이 없으면 기본값 설정 (너무 많으면 문제)
+        // limit이 없으면 기본값 설정
         query = query.limit(200);
       }
 
@@ -210,9 +242,10 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
   }
 
   // 카테고리 이름 정규화 (Firebase에 저장된 형태로 변환)
-  // 현재는 클라이언트 사이드 필터링을 사용하므로 미사용
-  // @deprecated Firestore 필터링 활성화 시 사용
-  @Deprecated('클라이언트 사이드 필터링 사용 중')
+  // 현재는 Firestore 쿼리에서 직접 필터링하므로 미사용
+  // @deprecated Firestore 필터링 사용 중
+  @Deprecated('Firestore 쿼리에서 직접 필터링 사용 중')
+  // ignore: unused_element
   String _normalizeCategoryName(String category) {
     // Firebase에 저장된 카테고리 이름 매핑 (실제 Firebase 데이터 기준)
     final categoryMapping = {
@@ -224,7 +257,8 @@ class FirestoreDataSourceImpl implements FirestoreDataSource {
       // 추가 매핑 (실제 Firebase 데이터와 일치하도록)
       '기계 제작': '기계 제작',
       '인쇄': '인쇄',
-      '공구 MALL': '공구 MALL',
+      '공구 MALL': 'MALL',
+      'MALL': 'MALL',
     };
     
     final normalized = categoryMapping[category] ?? category;

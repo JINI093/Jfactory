@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../viewmodels/favorite_viewmodel.dart';
+import '../../viewmodels/main_viewmodel.dart';
 import '../../../domain/entities/company_entity.dart';
 
 class FavoritesView extends StatefulWidget {
@@ -272,10 +273,12 @@ class _FavoritesViewState extends State<FavoritesView> {
     return GestureDetector(
       onTap: () {
         if (label == '홈') {
+          context.read<MainViewModel>().clearFilters();
           context.go('/main');
         } else if (label == '마이페이지') {
           context.go('/profile');
         } else if (label == '되돌가기') {
+          context.read<MainViewModel>().clearFilters();
           if (context.canPop()) {
             context.pop();
           } else {

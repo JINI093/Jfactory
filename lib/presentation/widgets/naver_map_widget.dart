@@ -3,18 +3,24 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/location_service.dart';
 import '../../domain/entities/company_entity.dart';
+import '../views/map/fullscreen_map_view.dart';
 
 class NaverMapWidget extends StatefulWidget {
   final List<CompanyEntity> companies;
   final Function(CompanyEntity)? onCompanyTapped;
+  final bool centerOnCompany;
+  final bool showCurrentLocationMarker;
 
   const NaverMapWidget({
     super.key,
     required this.companies,
     this.onCompanyTapped,
+    this.centerOnCompany = false,
+    this.showCurrentLocationMarker = true,
   });
 
   @override
@@ -27,6 +33,8 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
   bool _isLoading = true;
   bool _mapLoadingError = false;
   String? _mapImageUrl;
+  final Map<String, Position> _geocodedPositions = {};
+  bool _isRefreshing = false;
   
   // 네이버 로그인 API 설정 (Static Map도 동일한 키 사용) - 현재 사용하지 않음
   // static String get _naverClientId => dotenv.env['Naver_client_ID'] ?? '6VBjy8uAYG4OQuVORB0s';
@@ -39,29 +47,82 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     _initializeMap();
   }
 
+  @override
+  void didUpdateWidget(covariant NaverMapWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.companies.length != oldWidget.companies.length) {
+      _refreshMapMarkers();
+    }
+  }
+
+  Future<void> _refreshMapMarkers() async {
+    if (_isRefreshing) return;
+    _isRefreshing = true;
+    try {
+      if (_currentPosition == null) {
+        await _initializeMap();
+      } else {
+        if (mounted) {
+          setState(() {
+            _isLoading = true;
+            _mapLoadingError = false;
+            _mapImageUrl = null;
+          });
+        }
+        await _generateMapImageUrl();
+      }
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
   Future<void> _initializeMap() async {
     try {
       debugPrint('🗺️ [1/4] 위치 정보 가져오기 시작');
-      
-      final position = await _locationService.getCurrentLocation();
-      
-      if (position != null) {
-        _currentPosition = position;
-        debugPrint('✅ [1/4] 현재 위치 획득: ${position.latitude}, ${position.longitude}');
-      } else {
-        debugPrint('⚠️ [1/4] 위치 정보 없음, 기본 위치 사용');
-        _currentPosition = Position(
-          latitude: 37.5665,
-          longitude: 126.9780,
-          timestamp: DateTime.now(),
-          accuracy: 0,
-          altitude: 0,
-          heading: 0,
-          speed: 0,
-          speedAccuracy: 0,
-          altitudeAccuracy: 0,
-          headingAccuracy: 0,
+
+      if (widget.centerOnCompany && widget.companies.isNotEmpty) {
+        final company = widget.companies.firstWhere(
+          (c) => c.latitude != null && c.longitude != null,
+          orElse: () => widget.companies.first,
         );
+        if (company.latitude != null && company.longitude != null) {
+          _currentPosition = Position(
+            latitude: company.latitude!,
+            longitude: company.longitude!,
+            timestamp: DateTime.now(),
+            accuracy: 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+          );
+          debugPrint('✅ [1/4] 기업 위치로 중심 설정: ${company.latitude}, ${company.longitude}');
+        }
+      }
+
+      if (_currentPosition == null) {
+        final position = await _locationService.getCurrentLocation();
+
+        if (position != null) {
+          _currentPosition = position;
+          debugPrint('✅ [1/4] 현재 위치 획득: ${position.latitude}, ${position.longitude}');
+        } else {
+          debugPrint('⚠️ [1/4] 위치 정보 없음, 기본 위치 사용');
+          _currentPosition = Position(
+            latitude: 37.5665,
+            longitude: 126.9780,
+            timestamp: DateTime.now(),
+            accuracy: 0,
+            altitude: 0,
+            heading: 0,
+            speed: 0,
+            speedAccuracy: 0,
+            altitudeAccuracy: 0,
+            headingAccuracy: 0,
+          );
+        }
       }
       
       debugPrint('🗺️ [2/4] 지도 이미지 URL 생성 시작');
@@ -106,8 +167,12 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
 
   Future<void> _generateMapImageUrl() async {
     try {
-      final lat = _currentPosition?.latitude ?? 37.5665;
-      final lng = _currentPosition?.longitude ?? 126.9780;
+      Position? centerPosition;
+      if (widget.centerOnCompany && widget.companies.isNotEmpty) {
+        centerPosition = await _resolveCompanyPosition(widget.companies.first);
+      }
+      final lat = centerPosition?.latitude ?? _currentPosition?.latitude ?? 37.5665;
+      final lng = centerPosition?.longitude ?? _currentPosition?.longitude ?? 126.9780;
       
       debugPrint('🗺️ [2/4] 위치 정보: lat=$lat, lng=$lng');
       
@@ -122,83 +187,39 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       // 회사 마커들 추가 (Google Maps 형식)
       String companyMarkers = '';
       int validCompanyCount = 0;
+      final List<CompanyEntity> markerCompanies = [];
       
       debugPrint('🗺️ [2/4] 전체 회사 수: ${widget.companies.length}');
       
-      // 테스트용 가짜 회사 데이터 (실제 데이터가 없을 때)
-      List<CompanyEntity> testCompanies = [];
-      if (widget.companies.isEmpty) {
-        debugPrint('🗺️ [2/4] 실제 회사 데이터가 없어서 테스트 데이터 사용');
-        testCompanies = [
-          // 현재 위치 주변 테스트 회사들
-          CompanyEntity(
-            id: 'test1',
-            companyName: '스타벅스 강남점',
-            ceoName: '김사장',
-            phone: '02-123-4567',
-            address: '서울시 강남구',
-            detailAddress: '테헤란로 123',
-            category: '음식점',
-            subcategory: '카페',
-            latitude: lat + 0.01, // 현재 위치에서 약 1km 북쪽
-            longitude: lng + 0.01,
-            photos: [],
-            adPayment: 50000, // 프리미엄
-            isVerified: true,
-            createdAt: DateTime.now(),
-          ),
-          CompanyEntity(
-            id: 'test2', 
-            companyName: '맥도날드',
-            ceoName: '이대표',
-            phone: '02-234-5678',
-            address: '서울시 강남구',
-            detailAddress: '역삼동 456',
-            category: '음식점',
-            subcategory: '패스트푸드',
-            latitude: lat - 0.005, // 현재 위치에서 약 500m 남쪽
-            longitude: lng + 0.005,
-            photos: [],
-            adPayment: 0, // 일반
-            isVerified: true,
-            createdAt: DateTime.now(),
-          ),
-          CompanyEntity(
-            id: 'test3',
-            companyName: '롯데리아',
-            ceoName: '박사장',
-            phone: '02-345-6789',
-            address: '서울시 강남구',
-            detailAddress: '삼성동 789',
-            category: '음식점',
-            subcategory: '패스트푸드',
-            latitude: lat + 0.003,
-            longitude: lng - 0.008,
-            photos: [],
-            adPayment: 30000, // 프리미엄
-            isVerified: true,
-            createdAt: DateTime.now(),
-          ),
-        ];
-      }
-      
-      final companiesToShow = widget.companies.isNotEmpty ? widget.companies : testCompanies;
+      final companiesToShow = widget.companies;
       debugPrint('🗺️ [2/4] 표시할 회사 수: ${companiesToShow.length}');
       
       for (int i = 0; i < companiesToShow.length && i < 15; i++) {
         final company = companiesToShow[i];
-        debugPrint('🗺️ [2/4] 회사 $i: ${company.companyName}, 위도: ${company.latitude}, 경도: ${company.longitude}, 광고결제: ${company.adPayment}');
-        
-        if (company.latitude != null && company.longitude != null) {
+        final position = await _resolveCompanyPosition(company);
+        debugPrint(
+          '🗺️ [2/4] 회사 $i: ${company.companyName}, '
+          '위도: ${position?.latitude ?? company.latitude}, '
+          '경도: ${position?.longitude ?? company.longitude}, '
+          '광고결제: ${company.adPayment}',
+        );
+
+        final latValue = position?.latitude ?? company.latitude;
+        final lngValue = position?.longitude ?? company.longitude;
+        if (latValue != null && lngValue != null) {
           // 프리미엄 업체와 일반 업체 구분
           final markerColor = company.adPayment > 0 ? 'blue' : 'green';
           final markerSize = company.adPayment > 0 ? 'mid' : 'small';
-          final markerLabel = company.adPayment > 0 ? 'P' : (validCompanyCount + 1).toString();
+          final markerLabel = (validCompanyCount + 1).toString();
           
-          companyMarkers += '&markers=color:$markerColor%7Csize:$markerSize%7Clabel:$markerLabel%7C${company.latitude},${company.longitude}';
+          companyMarkers += '&markers=color:$markerColor%7Csize:$markerSize%7Clabel:$markerLabel%7C$latValue,$lngValue';
           validCompanyCount++;
+          markerCompanies.add(company);
           
-          debugPrint('🗺️ [2/4] ✅ 마커 추가: ${company.companyName} (${company.latitude}, ${company.longitude}) - ${company.adPayment > 0 ? 'Premium' : 'Regular'}');
+          debugPrint(
+            '🗺️ [2/4] ✅ 마커 추가: ${company.companyName} '
+            '($latValue, $lngValue) - ${company.adPayment > 0 ? 'Premium' : 'Regular'}',
+          );
         } else {
           debugPrint('🗺️ [2/4] ❌ 위치 정보 없음: ${company.companyName}');
         }
@@ -210,7 +231,9 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       final googleApiKey = dotenv.env['Google_Maps_API'] ?? 'AIzaSyAQaAqDNxtkH0D_tPv39VtqIzn9dgZnViA';
       
       // 현재 위치 마커 (빨간색, 큰 사이즈)
-      final currentLocationMarker = '&markers=color:red%7Csize:mid%7Clabel:ME%7C$lat,$lng';
+      final currentLocationMarker = widget.showCurrentLocationMarker
+          ? '&markers=color:red%7Csize:mid%7Clabel:ME%7C$lat,$lng'
+          : '';
       
       // Google Static Maps API URL 생성
       // 참고: URL 길이 제한은 8192자입니다
@@ -232,14 +255,16 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
           // 마커를 다시 생성하되 최대 10개로 제한
           String limitedCompanyMarkers = '';
           int limitedCount = 0;
+          final List<CompanyEntity> limitedCompanies = [];
           for (int i = 0; i < companiesToShow.length && i < 10; i++) {
             final company = companiesToShow[i];
             if (company.latitude != null && company.longitude != null) {
               final markerColor = company.adPayment > 0 ? 'blue' : 'green';
               final markerSize = company.adPayment > 0 ? 'mid' : 'small';
-              final markerLabel = company.adPayment > 0 ? 'P' : (limitedCount + 1).toString();
+              final markerLabel = (limitedCount + 1).toString();
               limitedCompanyMarkers += '&markers=color:$markerColor%7Csize:$markerSize%7Clabel:$markerLabel%7C${company.latitude},${company.longitude}';
               limitedCount++;
+              limitedCompanies.add(company);
             }
           }
           companyMarkers = limitedCompanyMarkers;
@@ -371,7 +396,7 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       children: [
         _buildMapImage(),
         _buildControls(),
-        _buildLocationInfo(),
+        
       ],
     );
   }
@@ -380,163 +405,127 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
     return SizedBox(
       width: double.infinity,
       height: double.infinity,
-      child: Image.network(
-        _mapImageUrl!,
-        // Google Static Maps API는 특별한 헤더 필요 없음
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return Container(
-            color: Colors.grey[200],
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  SizedBox(height: 8.h),
-                  Text(
-                    '지도 이미지 로딩 중...',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: Colors.grey[600],
+      child: GestureDetector(
+        onTap: _openFullscreenMap,
+        child: Image.network(
+          _mapImageUrl!,
+          // Google Static Maps API는 특별한 헤더 필요 없음
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              color: Colors.grey[200],
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(),
+                    SizedBox(height: 8.h),
+                    Text(
+                      '지도 이미지 로딩 중...',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.grey[600],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('❌ 지도 이미지 로드 에러: $error');
-          debugPrint('❌ 스택 트레이스: $stackTrace');
-          
-          // 에러 상태 설정
-          if (mounted) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                setState(() {
-                  _mapLoadingError = true;
-                });
-              }
-            });
-          }
-          
-          // 403 에러인지 확인
-          String errorMessage = '지도 이미지 로드 실패';
-          if (error.toString().contains('403') || error.toString().contains('Forbidden')) {
-            errorMessage = '지도 API 권한 오류';
-          } else if (error.toString().contains('400') || error.toString().contains('Bad Request')) {
-            errorMessage = '지도 요청 오류';
-          }
-          
-          return Container(
-            color: Colors.grey[100],
-            child: Center(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.map_outlined,
-                        size: 40.sp,
-                        color: Colors.grey[400],
-                      ),
-                      SizedBox(height: 6.h),
-                      Text(
-                        errorMessage,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11.sp,
-                          color: Colors.grey[600],
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            debugPrint('❌ 지도 이미지 로드 에러: $error');
+            debugPrint('❌ 스택 트레이스: $stackTrace');
+            
+            // 에러 상태 설정
+            if (mounted) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _mapLoadingError = true;
+                  });
+                }
+              });
+            }
+            
+            // 403 에러인지 확인
+            String errorMessage = '지도 이미지 로드 실패';
+            if (error.toString().contains('403') || error.toString().contains('Forbidden')) {
+              errorMessage = '지도 API 권한 오류';
+            } else if (error.toString().contains('400') || error.toString().contains('Bad Request')) {
+              errorMessage = '지도 요청 오류';
+            }
+            
+            return Container(
+              color: Colors.grey[100],
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.map_outlined,
+                          size: 40.sp,
+                          color: Colors.grey[400],
                         ),
-                      ),
-                      SizedBox(height: 8.h),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 220),
-                        child: Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 4.w,
-                          runSpacing: 4.h,
-                          children: [
-                            ElevatedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _mapLoadingError = false;
-                                  _isLoading = true;
-                                  _mapImageUrl = null;
-                                });
-                                _initializeMap();
-                              },
-                              style: ElevatedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                                textStyle: TextStyle(fontSize: 10.sp),
-                                minimumSize: Size(0, 32.h),
-                              ),
-                              child: const Text('다시 시도'),
-                            ),
-                            ElevatedButton.icon(
-                              onPressed: _openGoogleMap,
-                              icon: const Icon(Icons.open_in_new, size: 12),
-                              label: const Text('지도앱'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green[600],
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
-                                textStyle: TextStyle(fontSize: 10.sp),
-                                minimumSize: Size(0, 32.h),
-                              ),
-                            ),
-                          ],
+                        SizedBox(height: 6.h),
+                        Text(
+                          errorMessage,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            color: Colors.grey[600],
+                          ),
                         ),
-                      ),
-                    ],
+                        SizedBox(height: 8.h),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 220),
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 4.w,
+                            runSpacing: 4.h,
+                            children: [
+                              ElevatedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _mapLoadingError = false;
+                                    _isLoading = true;
+                                    _mapImageUrl = null;
+                                  });
+                                  _initializeMap();
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                                  textStyle: TextStyle(fontSize: 10.sp),
+                                  minimumSize: Size(0, 32.h),
+                                ),
+                                child: const Text('다시 시도'),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: _openGoogleMap,
+                                icon: const Icon(Icons.open_in_new, size: 12),
+                                label: const Text('지도앱'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green[600],
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+                                  textStyle: TextStyle(fontSize: 10.sp),
+                                  minimumSize: Size(0, 32.h),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildLocationInfo() {
-    final lat = _currentPosition?.latitude ?? 37.5665;
-    final lng = _currentPosition?.longitude ?? 126.9780;
-    
-    return Positioned(
-      bottom: 8.h,
-      left: 8.w,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(4.r),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '🗺️ Google 지도',
-              style: TextStyle(
-                fontSize: 10.sp,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-              style: TextStyle(
-                fontSize: 9.sp,
-                color: Colors.white70,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -653,6 +642,12 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
       child: Row( // Column에서 Row로 변경하여 가로 배치
         children: [
           _buildControlButton(
+            icon: Icons.fullscreen,
+            onTap: _openFullscreenMap,
+            tooltip: '전체 화면 보기',
+          ),
+          SizedBox(width: 4.w), // 가로 간격
+          _buildControlButton(
             icon: Icons.refresh,
             onTap: () {
               setState(() {
@@ -737,6 +732,89 @@ class _NaverMapWidgetState extends State<NaverMapWidget> {
         );
       }
     }
+  }
+
+  Future<Position?> _resolveCompanyPosition(CompanyEntity company) async {
+    if (company.latitude != null && company.longitude != null) {
+      return Position(
+        latitude: company.latitude!,
+        longitude: company.longitude!,
+        timestamp: DateTime.now(),
+        accuracy: 0,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        speed: 0,
+        speedAccuracy: 0,
+        headingAccuracy: 0,
+      );
+    }
+
+    final addressParts = [
+      company.address.trim(),
+      company.detailAddress.trim(),
+    ].where((part) => part.isNotEmpty).toList();
+
+    if (addressParts.isEmpty) {
+      return null;
+    }
+
+    final addressKey = addressParts.join(' ');
+    final cached = _geocodedPositions[addressKey];
+    if (cached != null) {
+      return cached;
+    }
+
+    final resolved = await _locationService.getCoordinatesFromAddress(addressKey);
+    if (resolved != null) {
+      _geocodedPositions[addressKey] = resolved;
+    }
+    return resolved;
+  }
+
+  Future<Map<String, LatLng>> _resolveFullscreenMarkerPositions() async {
+    final positions = <String, LatLng>{};
+    var geocodeCount = 0;
+
+    for (final company in widget.companies) {
+      final lat = company.latitude;
+      final lng = company.longitude;
+      if (lat != null && lng != null) {
+        positions[company.id] = LatLng(lat, lng);
+        continue;
+      }
+
+      if (geocodeCount >= 30) {
+        continue;
+      }
+
+      final resolved = await _resolveCompanyPosition(company);
+      if (resolved != null) {
+        positions[company.id] = LatLng(resolved.latitude, resolved.longitude);
+        geocodeCount++;
+      }
+    }
+
+    return positions;
+  }
+
+  Future<void> _openFullscreenMap() async {
+    final markerPositions = await _resolveFullscreenMarkerPositions();
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullscreenMapView(
+          companies: widget.companies,
+          onCompanyTapped: widget.onCompanyTapped,
+          mapImageUrl: _mapImageUrl,
+          markerCompanies: widget.companies,
+          markerPositions: markerPositions,
+          initialLat: _currentPosition?.latitude,
+          initialLng: _currentPosition?.longitude,
+        ),
+      ),
+    );
   }
 
 }

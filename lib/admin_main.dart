@@ -3,12 +3,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'presentation/views/admin/admin_main.dart';
-import 'presentation/views/admin/user_management_view.dart';
-import 'presentation/views/admin/post_management_view.dart';
-import 'presentation/views/admin/post_registration_view.dart';
-import 'presentation/views/admin/form_management_view.dart';
-import 'presentation/views/admin/ad_management_view.dart';
-import 'presentation/views/admin/inquiry_management_view.dart';
 import 'presentation/providers/app_providers.dart';
 
 void main() async {
@@ -24,7 +18,7 @@ void main() async {
     }
     
     // fir-test-96091 프로젝트로 초기화 ([DEFAULT] 이름 사용)
-    await Firebase.initializeApp(
+      await Firebase.initializeApp(
       options: const FirebaseOptions(
         apiKey: 'AIzaSyCFYUY93SUSMC7ZD9fhsH4YFFOs-3cl-vo',
         appId: '1:468556282634:web:a8c16384daad9e3406d8f3',
@@ -33,7 +27,7 @@ void main() async {
         authDomain: 'fir-test-96091.firebaseapp.com',
         storageBucket: 'fir-test-96091.firebasestorage.app',
       ),
-    );
+      );
     debugPrint('✅ Admin App: Firebase initialized successfully with fir-test-96091');
   } catch (e) {
     debugPrint('❌ Admin App: Firebase initialization failed: $e');
@@ -75,12 +69,6 @@ class AdminApp extends StatelessWidget {
                   ),
                 ),
               ),
-              cardTheme: CardThemeData(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
               inputDecorationTheme: InputDecorationTheme(
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -92,14 +80,6 @@ class AdminApp extends StatelessWidget {
               ),
             ),
             home: const AdminMainView(),
-            routes: {
-              '/user-management': (context) => const UserManagementView(),
-              '/post-management': (context) => const PostManagementView(),
-              '/post-registration': (context) => const PostRegistrationView(),
-              '/form-management': (context) => const FormManagementView(),
-              '/ad-management': (context) => const AdManagementView(),
-              '/inquiry-management': (context) => const InquiryManagementView(),
-            },
           );
         },
       ),

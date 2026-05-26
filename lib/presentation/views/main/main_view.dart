@@ -13,6 +13,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../domain/entities/company_entity.dart';
 import '../../widgets/naver_map_widget.dart';
 import '../../widgets/admob_banner_widget.dart';
+import '../../../services/location_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../map/fullscreen_map_view.dart';
+import '../../viewmodels/favorite_viewmodel.dart';
 
 class MainView extends StatefulWidget {
   const MainView({super.key});
@@ -21,22 +25,40 @@ class MainView extends StatefulWidget {
   State<MainView> createState() => _MainViewState();
 }
 
-class _MainViewState extends State<MainView> {
+class _MainViewState extends State<MainView> with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _companiesSectionKey = GlobalKey();
+  bool _hasInitialized = false;
+  String? _previousRoute;
+  bool _hasNavigatedAway = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Load companies when the view is initialized
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         try {
-          context.read<MainViewModel>().loadCompanies();
+          final viewModel = context.read<MainViewModel>();
+          // 메인 진입 시 검색/필터 상태 초기화
+          if (viewModel.searchQuery.isNotEmpty ||
+              viewModel.selectedCategory != null ||
+              viewModel.selectedLocations.isNotEmpty) {
+            viewModel.clearFilters();
+            _searchController.clear();
+          }
+          viewModel.loadCompanies();
+          context.read<FavoriteViewModel>().loadFavoriteCompanies();
           _checkCompanyRegistration();
+          _hasInitialized = true;
+          // 초기 경로 저장
+          final router = GoRouter.of(context);
+          _previousRoute = router.routerDelegate.currentConfiguration.uri.toString();
         } catch (e) {
           // Handle error silently for now
+          _previousRoute = RouteNames.main;
         }
       }
     });
@@ -44,9 +66,80 @@ class _MainViewState extends State<MainView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 다른 화면에서 돌아왔을 때 검색 결과 초기화
+    if (_hasInitialized && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        
+        try {
+          final router = GoRouter.of(context);
+          final currentLocation = router.routerDelegate.currentConfiguration.uri.toString();
+          
+          // 이전 경로가 메인이 아니고 현재 경로가 메인인 경우 (다른 화면에서 돌아온 경우)
+          if (_previousRoute != null && 
+              _previousRoute != RouteNames.main && 
+              currentLocation == RouteNames.main &&
+              _hasNavigatedAway) {
+            // 검색 결과 초기화
+            final viewModel = context.read<MainViewModel>();
+            if (viewModel.searchQuery.isNotEmpty || 
+                viewModel.selectedCategory != null ||
+                viewModel.selectedLocations.isNotEmpty) {
+              viewModel.clearFilters();
+              _searchController.clear();
+            }
+            _hasNavigatedAway = false;
+          }
+          
+          // 현재 경로가 메인이 아니면 플래그 설정
+          if (currentLocation != RouteNames.main) {
+            _hasNavigatedAway = true;
+          }
+          
+          _previousRoute = currentLocation;
+        } catch (e) {
+          // GoRouter를 사용할 수 없는 경우 무시
+          debugPrint('Error getting current route: $e');
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 앱이 다시 활성화될 때도 확인
+    if (state == AppLifecycleState.resumed && _hasNavigatedAway) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          try {
+            final router = GoRouter.of(context);
+            final currentLocation = router.routerDelegate.currentConfiguration.uri.toString();
+            if (currentLocation == RouteNames.main) {
+              final viewModel = context.read<MainViewModel>();
+              if (viewModel.searchQuery.isNotEmpty || 
+                  viewModel.selectedCategory != null ||
+                  viewModel.selectedLocations.isNotEmpty) {
+                viewModel.clearFilters();
+                _searchController.clear();
+              }
+              _hasNavigatedAway = false;
+            }
+          } catch (e) {
+            debugPrint('Error in lifecycle state: $e');
+          }
+        }
+      });
+    }
   }
 
   Future<void> _checkCompanyRegistration() async {
@@ -106,6 +199,45 @@ class _MainViewState extends State<MainView> {
 
   @override
   Widget build(BuildContext context) {
+    // 다른 화면에서 돌아왔을 때 검색 결과 초기화
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      try {
+        final viewModel = context.read<MainViewModel>();
+        if (viewModel.searchQuery.isEmpty && _searchController.text.isNotEmpty) {
+          _searchController.clear();
+        }
+        final router = GoRouter.of(context);
+        final currentLocation = router.routerDelegate.currentConfiguration.uri.toString();
+        
+        // 이전 경로가 메인이 아니고 현재 경로가 메인인 경우 (다른 화면에서 돌아온 경우)
+        if (_previousRoute != null && 
+            _previousRoute != RouteNames.main && 
+            currentLocation == RouteNames.main &&
+            _hasNavigatedAway) {
+          // 검색 결과 초기화
+          if (viewModel.searchQuery.isNotEmpty || 
+              viewModel.selectedCategory != null ||
+              viewModel.selectedLocations.isNotEmpty) {
+            viewModel.clearFilters();
+            _searchController.clear();
+          }
+          _hasNavigatedAway = false;
+        }
+        
+        // 현재 경로가 메인이 아니면 플래그 설정
+        if (currentLocation != RouteNames.main && currentLocation != _previousRoute) {
+          _hasNavigatedAway = true;
+        }
+        
+        _previousRoute = currentLocation;
+      } catch (e) {
+        // GoRouter를 사용할 수 없는 경우 무시
+        debugPrint('Error checking route in build: $e');
+      }
+    });
+    
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: _buildAppBar(),
@@ -123,6 +255,19 @@ class _MainViewState extends State<MainView> {
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
+  }
+
+  Future<void> _openCompanyDetail(String route) async {
+    await context.push(route);
+    if (!mounted) return;
+    final viewModel = context.read<MainViewModel>();
+    if (viewModel.searchQuery.isNotEmpty ||
+        viewModel.selectedCategory != null ||
+        viewModel.selectedSubcategory != null ||
+        viewModel.selectedLocations.isNotEmpty) {
+      viewModel.clearFilters();
+    }
+    _searchController.clear();
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -348,18 +493,28 @@ class _MainViewState extends State<MainView> {
               SizedBox(width: 8.w),
               _buildLocationDropdown('지역'),
               const Spacer(),
-              Container(
-                width: 40.w,
-                height: 40.h,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E3A5F),
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Icon(
-                  Icons.view_module,
-                  color: Colors.white,
-                  size: 20.sp,
-                ),
+              Consumer<MainViewModel>(
+                builder: (context, mainViewModel, child) {
+                  return GestureDetector(
+                    onTap: () => _openFullscreenMapFromButton(
+                      context,
+                      mainViewModel.companies,
+                    ),
+                    child: Container(
+                      width: 40.w,
+                      height: 40.h,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A5F),
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                      child: Icon(
+                        Icons.view_module,
+                        color: Colors.white,
+                        size: 20.sp,
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -370,7 +525,7 @@ class _MainViewState extends State<MainView> {
                 companies: mainViewModel.companies,
                 onCompanyTapped: (company) {
                   // 회사 상세 페이지로 이동
-                  context.push('/company/${company.id}');
+                  _openCompanyDetail('/company/${company.id}');
                 },
               );
             },
@@ -457,6 +612,67 @@ class _MainViewState extends State<MainView> {
     );
   }
 
+  Future<void> _openFullscreenMapFromButton(
+    BuildContext context,
+    List<CompanyEntity> companies,
+  ) async {
+    if (!mounted) return;
+
+    final limitedCompanies = companies.take(15).toList();
+    final locationService = LocationService();
+    final markerPositions = <String, LatLng>{};
+
+    if (limitedCompanies.isNotEmpty) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return const Center(child: CircularProgressIndicator());
+        },
+      );
+    }
+
+    for (final company in limitedCompanies) {
+      final lat = company.latitude;
+      final lng = company.longitude;
+      if (lat != null && lng != null) {
+        markerPositions[company.id] = LatLng(lat, lng);
+        continue;
+      }
+
+      final addressParts = [
+        company.address.trim(),
+        company.detailAddress.trim(),
+      ].where((part) => part.isNotEmpty).toList();
+
+      if (addressParts.isEmpty) {
+        continue;
+      }
+
+      final resolved =
+          await locationService.getCoordinatesFromAddress(addressParts.join(' '));
+      if (resolved != null) {
+        markerPositions[company.id] =
+            LatLng(resolved.latitude, resolved.longitude);
+      }
+    }
+
+    if (!mounted) return;
+    if (limitedCompanies.isNotEmpty) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullscreenMapView(
+          companies: limitedCompanies,
+          markerCompanies: limitedCompanies,
+          markerPositions: markerPositions,
+        ),
+      ),
+    );
+  }
+
   Widget _buildPremiumCompanies() {
     return Container(
       key: _companiesSectionKey,
@@ -475,11 +691,13 @@ class _MainViewState extends State<MainView> {
                     children: [
                       Expanded(
                         child: Text(
-                          viewModel.searchQuery.isNotEmpty 
+                          viewModel.searchQuery.isNotEmpty
                               ? '검색 결과'
-                              : viewModel.selectedCategory != null
-                                  ? '${viewModel.selectedCategory} 기업'
-                                  : '프리미엄 기업',
+                              : viewModel.showAllCompanies
+                                  ? '전체보기'
+                                  : viewModel.selectedCategory != null
+                                      ? '${viewModel.selectedCategory} 기업'
+                                      : '프리미엄 기업',
                           style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.bold,
@@ -487,7 +705,10 @@ class _MainViewState extends State<MainView> {
                           ),
                         ),
                       ),
-                      if (viewModel.selectedCategory != null || viewModel.searchQuery.isNotEmpty)
+                      if (viewModel.selectedCategory != null ||
+                          viewModel.searchQuery.isNotEmpty ||
+                          viewModel.selectedLocations.isNotEmpty ||
+                          viewModel.showAllCompanies)
                         GestureDetector(
                           onTap: () {
                             viewModel.clearFilters();
@@ -557,8 +778,14 @@ class _MainViewState extends State<MainView> {
                 );
               }
 
-              // 검색어나 카테고리 필터가 있으면 필터링된 기업 표시, 아니면 프리미엄 기업만 필터링
-              final displayCompanies = viewModel.searchQuery.isNotEmpty || viewModel.selectedCategory != null
+              final hasActiveFilters = viewModel.searchQuery.isNotEmpty ||
+                  viewModel.selectedCategory != null ||
+                  viewModel.selectedSubcategory != null ||
+                  viewModel.selectedLocations.isNotEmpty ||
+                  viewModel.showAllCompanies;
+
+              // 검색/필터가 있으면 필터링된 기업 표시, 아니면 프리미엄 기업만 표시
+              final displayCompanies = hasActiveFilters
                   ? viewModel.companies.take(20).toList()
                   : viewModel.companies
                       .where((company) => company.adPayment > 0)
@@ -576,13 +803,13 @@ class _MainViewState extends State<MainView> {
                     child: Column(
                       children: [
                         Icon(
-                          Icons.business_outlined,
+                          hasActiveFilters ? Icons.search_off : Icons.business_outlined,
                           size: 48.sp,
                           color: Colors.grey[400],
                         ),
                         SizedBox(height: 12.h),
                         Text(
-                          '프리미엄 기업이 없습니다.',
+                          hasActiveFilters ? '해당 기업이 없습니다.' : '프리미엄 기업이 없습니다.',
                           style: TextStyle(
                             fontSize: 14.sp,
                             color: Colors.grey[600],
@@ -591,7 +818,9 @@ class _MainViewState extends State<MainView> {
                         ),
                         SizedBox(height: 6.h),
                         Text(
-                          '기업광고를 구매하면 메인에 노출됩니다.',
+                          hasActiveFilters
+                              ? '다른 조건으로 검색해보세요.'
+                              : '기업광고를 구매하면 메인에 노출됩니다.',
                           style: TextStyle(
                             fontSize: 12.sp,
                             color: Colors.grey[500],
@@ -615,11 +844,20 @@ class _MainViewState extends State<MainView> {
                 itemCount: displayCompanies.length,
                 itemBuilder: (context, index) {
                   final company = displayCompanies[index];
-                  return GestureDetector(
-                    onTap: () {
-                      context.push('/company-page/${company.id}');
+                  return Consumer<FavoriteViewModel>(
+                    builder: (context, favoriteViewModel, child) {
+                      final isFavorite = favoriteViewModel.isFavorite(company.id);
+                      return GestureDetector(
+                        onTap: () {
+                          _openCompanyDetail('/company-page/${company.id}');
+                        },
+                        child: _buildCompanyCard(
+                          company,
+                          isPremium: true,
+                          isFavorite: isFavorite,
+                        ),
+                      );
                     },
-                    child: _buildCompanyCard(company, isPremium: true),
                   );
                 },
               );
@@ -630,7 +868,11 @@ class _MainViewState extends State<MainView> {
     );
   }
 
-  Widget _buildCompanyCard(CompanyEntity company, {bool isPremium = false}) {
+  Widget _buildCompanyCard(
+    CompanyEntity company, {
+    bool isPremium = false,
+    bool isFavorite = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -672,8 +914,8 @@ class _MainViewState extends State<MainView> {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    Icons.favorite,
-                    color: Colors.red,
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: isFavorite ? Colors.red : Colors.grey[500],
                     size: 18.sp,
                   ),
                 ),

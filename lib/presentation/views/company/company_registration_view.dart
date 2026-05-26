@@ -8,6 +8,8 @@ import '../../../core/router/route_names.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+import '../../../core/services/image_compress_service.dart';
 import '../../../data/models/category_model.dart';
 
 class PhoneNumberFormatter extends TextInputFormatter {
@@ -328,37 +330,35 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
       result.add(
         DropdownMenuItem<String>(
           value: items[i],
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 4.h),
-            child: Text(items[i]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 4.h),
+                child: Text(items[i]),
+              ),
+              if (i < items.length - 1)
+                Container(
+                  height: 2,
+                  margin: EdgeInsets.symmetric(vertical: 0),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.grey[400]!,
+                        width: 1,
+                      ),
+                      bottom: BorderSide(
+                        color: Colors.grey[400]!,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       );
-      // 마지막 항목이 아니면 구분선 추가 (세부업종과 동일한 스타일)
-      if (i < items.length - 1) {
-        result.add(
-          DropdownMenuItem<String>(
-            enabled: false,
-            value: '__category_divider__',
-            child: Container(
-              height: 2,
-              margin: EdgeInsets.symmetric(vertical: 0),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: Colors.grey[400]!,
-                    width: 1,
-                  ),
-                  bottom: BorderSide(
-                    color: Colors.grey[400]!,
-                    width: 1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }
     }
     return result;
   }
@@ -415,6 +415,8 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
     _loadUserData();
   }
   
+  bool _isCompanyNameReadOnly = false; // 개인 계정으로 가입한 경우 입력 가능하도록
+
   Future<void> _loadUserData() async {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
@@ -427,33 +429,39 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         if (userDoc.exists) {
           final userData = userDoc.data();
           if (userData?['userType'] == 'company') {
+            // 기업 계정으로 가입한 경우: 기업명 자동 입력, 읽기 전용
             setState(() {
               _companyNameFromSignup = userData?['companyName'];
               _companyNameController.text = _companyNameFromSignup ?? '';
               _businessLicenseUrlFromSignup = userData?['businessLicenseUrl'];
+              _isCompanyNameReadOnly = true; // 읽기 전용
               _isLoading = false;
             });
           } else {
-            // userType이 'company'가 아니어도 로딩 완료
+            // 개인 계정으로 가입한 경우: 기업명 입력 가능
             setState(() {
+              _isCompanyNameReadOnly = false; // 입력 가능
               _isLoading = false;
             });
           }
         } else {
-          // 문서가 없어도 로딩 완료
+          // 문서가 없어도 로딩 완료 (개인 계정으로 간주)
           setState(() {
+            _isCompanyNameReadOnly = false;
             _isLoading = false;
           });
         }
       } else {
-        // 사용자가 없어도 로딩 완료
+        // 사용자가 없어도 로딩 완료 (개인 계정으로 간주)
         setState(() {
+          _isCompanyNameReadOnly = false;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
       setState(() {
+        _isCompanyNameReadOnly = false;
         _isLoading = false;
       });
     }
@@ -530,14 +538,16 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
                     ),
                     SizedBox(height: 32.h),
                     
-                    // 기업명 (자동 입력, 읽기 전용)
+                    // 기업명 (기업 계정: 자동 입력/읽기 전용, 개인 계정: 입력 가능)
                     _buildTextField(
                       label: '기업명',
                       controller: _companyNameController,
-                      hintText: '기업명',
+                      hintText: '기업명을 입력해주세요',
                       isRequired: true,
-                      readOnly: true,
-                      suffixIcon: const Icon(Icons.lock_outline, size: 20),
+                      readOnly: _isCompanyNameReadOnly,
+                      suffixIcon: _isCompanyNameReadOnly 
+                          ? const Icon(Icons.lock_outline, size: 20)
+                          : null,
                     ),
                     
                     SizedBox(height: 16.h),
@@ -842,12 +852,16 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         SizedBox(height: 8.h),
         DropdownButtonFormField<String>(
           value: value,
+          isExpanded: true, // 선택된 값이 칸에 맞춰서 보이도록
           items: itemBuilderOverride != null
               ? itemBuilderOverride(items)
               : items.map((item) {
                   return DropdownMenuItem(
                     value: item,
-                    child: Text(item),
+                    child: Text(
+                      item,
+                      overflow: TextOverflow.ellipsis, // 긴 텍스트는 ... 처리
+                    ),
                   );
                 }).toList(),
           onChanged: onChanged,
@@ -874,6 +888,19 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
               vertical: 14.h,
             ),
           ),
+          selectedItemBuilder: (context) {
+            // 선택된 항목 표시용 빌더 (드롭다운이 열리지 않을 때 표시)
+            return items.map((item) {
+              return Text(
+                item,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: Colors.black87,
+                ),
+              );
+            }).toList();
+          },
           validator: isRequired
               ? (value) {
                   if (value == null || value.isEmpty) {
@@ -1660,7 +1687,7 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         'photo': photoUrl, // Single photo field that model expects
         'photos': photoUrl != null ? [photoUrl] : [], // List of photos for compatibility
         'adPayment': 0.0,
-        'isVerified': true,
+        'isVerified': false,
         'isPremium': false,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -1682,10 +1709,15 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(currentUser.uid)
-            .update({
+            .set({
               'companyRegistered': true,
               'companyRegistrationDate': FieldValue.serverTimestamp(),
-            });
+              'userType': 'company',
+              'companyName': companyName,
+              'isApproved': false,
+              if (businessLicenseUrl != null && businessLicenseUrl.isNotEmpty)
+                'businessLicenseUrl': businessLicenseUrl,
+            }, SetOptions(merge: true));
       } catch (e) {
         debugPrint('⚠️ users 컬렉션 업데이트 실패 (무시): $e');
         // Continue even if users update fails
@@ -1730,8 +1762,18 @@ class _CompanyRegistrationViewState extends State<CompanyRegistrationView> {
 
   Future<String> _uploadImage(File image, String path) async {
     try {
+      final bytes = await ImageCompressService.compressImageBytes(
+        image,
+        minWidth: 1024,
+        minHeight: 1024,
+        quality: 70,
+        maxBytes: 900 * 1024,
+      );
       final ref = FirebaseStorage.instance.ref().child(path);
-      final uploadTask = await ref.putFile(image);
+      final uploadTask = await ref.putData(
+        Uint8List.fromList(bytes),
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
       return await uploadTask.ref.getDownloadURL();
     } catch (e) {
       throw Exception('이미지 업로드 실패: $e');
